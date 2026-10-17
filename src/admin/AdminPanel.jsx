@@ -360,8 +360,8 @@ export default function AdminPanel() {
   return (
     <div className="admin-shell">
       <header className="admin-header">
-        <a className="admin-brand" href="/">Mana<span>Rural</span><small>ADMIN</small></a>
-        <a className="admin-store-link" href="/">← Back to storefront</a>
+        <a className="admin-brand" href={import.meta.env.BASE_URL}>Mana<span>Rural</span><small>ADMIN</small></a>
+        <a className="admin-store-link" href={import.meta.env.BASE_URL}>← Back to storefront</a>
       </header>
       <main className="admin-main">
         <div className="admin-title"><div><p className="admin-eyebrow">STORE MANAGEMENT</p><h1>Admin panel</h1><p>Manage your catalog and keep a local order register.</p></div><div className="admin-storage-label">Saved in this browser</div></div>
