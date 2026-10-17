@@ -326,7 +326,7 @@ function App() {
       </div>
       <header className="site-header">
         <a className="brand" href="#home" aria-label="ManaRural home">
-          <img src="/images/manarural-logo.png" alt="ManaRural — Everything you need, one place" />
+          <img src={`${import.meta.env.BASE_URL}images/manarural-logo.png`} alt="ManaRural — Everything you need, one place" />
           <span className="brand-name">Mana<span>Rural</span></span>
         </a>
         <nav className="desktop-nav" aria-label="Main navigation">
@@ -501,7 +501,7 @@ function App() {
       </main>
 
       <footer className="site-footer">
-        <div className="footer-main"><div className="footer-brand"><span className="brand-name">Mana<span>Rural</span></span><p>Everything you need, one place.<br />Your local basket of products.</p></div><div className="footer-contact"><span className="eyebrow">HERE FOR OUR COMMUNITY</span><a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noreferrer"><Icon name="whatsapp" size={18} /> +91 73069 99649</a><a href="mailto:manaruralservices@gmail.com">✉ &nbsp;manaruralservices@gmail.com</a></div><a className="back-top" href="/admin">Admin panel</a><a className="back-top" href="#home">Back to top ↑</a></div>
+        <div className="footer-main"><div className="footer-brand"><span className="brand-name">Mana<span>Rural</span></span><p>Everything you need, one place.<br />Your local basket of products.</p></div><div className="footer-contact"><span className="eyebrow">HERE FOR OUR COMMUNITY</span><a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noreferrer"><Icon name="whatsapp" size={18} /> +91 73069 99649</a><a href="mailto:manaruralservices@gmail.com">✉ &nbsp;manaruralservices@gmail.com</a></div><a className="back-top" href={`${import.meta.env.BASE_URL}admin`}>Admin panel</a><a className="back-top" href="#home">Back to top ↑</a></div>
         <div className="footer-bottom"><span>© {new Date().getFullYear()} ManaRural · RuralReachServices</span><span>మన ఊరు • మన అవసరాలు • ఒకే చోట</span></div>
       </footer>
 

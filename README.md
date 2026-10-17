@@ -92,6 +92,14 @@ npm run preview
 
 `npm run build` writes the deployable static files to `dist/`. The package currently does not define a test or lint script.
 
+## GitHub Pages deployment
+
+Repository: [https://github.com/UdaykiranDev/manarural](https://github.com/UdaykiranDev/manarural)
+
+Sample site: [https://udaykirandev.github.io/manarural/](https://udaykirandev.github.io/manarural/)
+
+The `Deploy to GitHub Pages` workflow builds the site and publishes `dist/` whenever changes are pushed to `develop` or `main` (or when started manually from GitHub Actions). It includes a fallback page for direct SPA routes. In the repository's **Settings → Pages**, set the build and deployment source to **GitHub Actions**. The published project site uses the `/manarural/` base path; its admin panel is at `/manarural/admin`.
+
 ## Source layout
 
 ```text
