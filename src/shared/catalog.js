@@ -485,4 +485,4 @@ export const digitalServices = [
   { icon: "🎁", title: "Gift cards", detail: "Google Play and popular brand vouchers" },
 ];
 
-export const whatsappNumber = "918934357875";
+export const whatsappNumber = "918500274274";
