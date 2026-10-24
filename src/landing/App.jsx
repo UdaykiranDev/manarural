@@ -5,9 +5,11 @@ import {
   groceryCategories,
   sampleShelfPrices,
   sampleBrands,
+  productTeluguNames,
   whatsappNumber,
 } from "../shared/catalog.js";
 import { readStoredList } from "../shared/adminStorage.js";
+import { endDemoSession, getDemoSession } from "../shared/demoAuth.js";
 import "./styles.css";
 
 function Icon({ name, size = 20 }) {
@@ -43,6 +45,11 @@ const formatPrice = (price) => new Intl.NumberFormat("en-IN", {
   currency: "INR",
   minimumFractionDigits: 2,
 }).format(price);
+
+function getProductDisplayName(product) {
+  const teluguName = product.teluguName || productTeluguNames[product.name];
+  return teluguName ? `${product.name} (${teluguName})` : product.name;
+}
 
 const scheduledServiceFields = {
   "Mobile recharge": [
@@ -85,6 +92,19 @@ const scheduledServiceFields = {
 };
 
 const recurringServiceTitles = new Set(["Mobile recharge", "DTH & cable", "Electricity bills"]);
+const digitalServicePrices = [
+  { service: "Xerox (Black & White)", telugu: "జిరాక్స్ (నలుపు & తెలుపు)", detail: "1 page / 1 పేజీ", price: "₹3.00" },
+  { service: "Xerox (Double Side)", telugu: "జిరాక్స్ (రెండు వైపులా)", detail: "1 page / 1 పేజీ", price: "₹5.00" },
+  { service: "Computer / WhatsApp Print (B&W)", telugu: "కంప్యూటర్ / వాట్సాప్ ప్రింట్ (నలుపు & తెలుపు)", detail: "1 page / 1 పేజీ", price: "₹10.00" },
+  { service: "Color Print (A4)", telugu: "కలర్ ప్రింట్ (A4)", detail: "1 page / 1 పేజీ", price: "₹10.00" },
+  { service: "Lamination (Aadhaar / ID Card)", telugu: "లామినేషన్ (ఆధార్ / గుర్తింపు కార్డు)", detail: "1 card / 1 కార్డు", price: "₹20.00" },
+  { service: "Lamination (A4 Certificate)", telugu: "లామినేషన్ (A4 సర్టిఫికేట్)", detail: "1 page / 1 పేజీ", price: "₹30.00" },
+  { service: "Electricity Bill Payment", telugu: "విద్యుత్ బిల్లు చెల్లింపు", detail: "1 bill / 1 బిల్లు", price: "₹5–₹10" },
+  { service: "Gas Cylinder Booking", telugu: "గ్యాస్ సిలిండర్ బుకింగ్", detail: "1 booking / 1 బుకింగ్", price: "₹10.00" },
+  { service: "Train Ticket Booking (Sleeper)", telugu: "రైలు టికెట్ బుకింగ్ (స్లీపర్)", detail: "1 ticket / 1 టికెట్", price: "₹30.00" },
+  { service: "Train Ticket Booking (AC Class)", telugu: "రైలు టికెట్ బుకింగ్ (ఏసీ)", detail: "1 ticket / 1 టికెట్", price: "₹50.00" },
+  { service: "Mobile & DTH Recharge", telugu: "మొబైల్ & DTH రీఛార్జ్", detail: "1 recharge / 1 రీఛార్జ్", price: "Below ₹199: ₹5; above ₹200: ₹10" },
+];
 const getServiceScheduleOptions = (serviceTitle) => recurringServiceTitles.has(serviceTitle)
   ? [
       ["once", "As soon as possible"],
@@ -95,6 +115,7 @@ const getServiceScheduleOptions = (serviceTitle) => recurringServiceTitles.has(s
   : [["once", "As soon as possible"], ["date", "Choose a date"]];
 
 function App() {
+  const demoSession = getDemoSession();
   const [activeTab, setActiveTab] = useState("groceries");
   const [activeCategory, setActiveCategory] = useState("all");
   const [search, setSearch] = useState("");
@@ -107,6 +128,7 @@ function App() {
   const [deliveryPincode, setDeliveryPincode] = useState("");
   const [cart, setCart] = useState({});
   const [selectedVariants, setSelectedVariants] = useState({});
+  const [selectedBrands, setSelectedBrands] = useState({});
   const [printServiceOpen, setPrintServiceOpen] = useState(false);
   const [scheduledService, setScheduledService] = useState("");
   const [serviceSchedule, setServiceSchedule] = useState("once");
@@ -121,6 +143,7 @@ function App() {
     pageRange: "",
   });
   const [printFiles, setPrintFiles] = useState([]);
+  const [printStatus, setPrintStatus] = useState("No files selected yet.");
   const [printCart, setPrintCart] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -131,6 +154,7 @@ function App() {
     return category.items.map((name, index) => ({
       id: `${category.id}-${index}`,
       name,
+      teluguName: productTeluguNames[name] || "",
       detail: category.name,
       category: category.id,
       image,
@@ -142,7 +166,7 @@ function App() {
     const query = search.trim().toLowerCase();
     return products.filter((product) => {
       const matchesCategory = activeCategory === "all" || product.category === activeCategory;
-      const matchesSearch = !query || `${product.name} ${product.detail}`.toLowerCase().includes(query);
+      const matchesSearch = !query || `${getProductDisplayName(product)} ${product.detail}`.toLowerCase().includes(query);
       return matchesCategory && matchesSearch;
     });
   }, [activeCategory, products, search]);
@@ -152,13 +176,16 @@ function App() {
     if (!query) return [];
     return inventoryItems.filter((item) => {
       const matchesCategory = activeCategory === "all" || item.category === activeCategory;
-      return matchesCategory && `${item.name} ${item.detail}`.toLowerCase().includes(query);
+      return matchesCategory && `${getProductDisplayName(item)} ${item.detail}`.toLowerCase().includes(query);
     });
   }, [activeCategory, inventoryItems, search]);
 
   const visibleCategories = activeCategory === "all"
     ? categories
     : categories.filter((category) => category.id === activeCategory);
+  const getProductBrands = (product) => brands.filter(
+    (brand) => brand.category === product.category && brand.status?.toLowerCase() !== "inactive",
+  );
   const cartItems = allProducts.flatMap((product) => {
     if (!product.variants) {
       return cart[product.id] ? [{
@@ -169,10 +196,12 @@ function App() {
         unitLabel: product.label,
       }] : [];
     }
-    return product.variants.flatMap((variant) => {
-      const cartKey = `${product.id}::${variant.id}`;
-      return cart[cartKey] ? [{ ...product, variant, cartKey, quantity: cart[cartKey] }] : [];
-    });
+    const productBrands = getProductBrands(product);
+    const brandOptions = [{ id: "", name: "Any available brand" }, ...productBrands];
+    return product.variants.flatMap((variant) => brandOptions.flatMap((brand) => {
+      const cartKey = `${product.id}::${brand.id || "any"}::${variant.id}`;
+      return cart[cartKey] ? [{ ...product, variant, brand: brand.id ? brand : null, cartKey, quantity: cart[cartKey] }] : [];
+    }));
   });
   const basketItems = [
     ...cartItems,
@@ -189,15 +218,52 @@ function App() {
   const cartCount = Object.values(cart).reduce((total, quantity) => total + quantity, 0)
     + printCart.reduce((total, job) => total + job.quantity, 0);
   const cartTotal = cartItems.reduce((total, item) => total + (item.variant?.price ?? item.unitPrice ?? 0) * item.quantity, 0);
+  const deliveryCharge = cartTotal <= 300 ? 30 : 0;
+  const orderTotal = cartTotal + deliveryCharge;
   const hasUnpricedItems = basketItems.some((item) => !Number.isFinite(item.variant?.price ?? item.unitPrice));
   const isLocalDelivery = deliveryPincode.trim() === "531036";
-  const meetsMinimumOrder = cartTotal >= 500;
-  const canProceedToCheckout = basketItems.length > 0 && !hasUnpricedItems && isLocalDelivery && meetsMinimumOrder;
+  const canProceedToCheckout = basketItems.length > 0 && !hasUnpricedItems && isLocalDelivery;
   const checkoutOrderLines = basketItems.map((item) => {
     const unitPrice = item.variant?.price ?? item.unitPrice;
     const unitLabel = item.variant?.label ?? item.unitLabel;
-    return `${item.name}${unitLabel ? ` (${unitLabel})` : ""} x ${item.quantity} — ${Number.isFinite(unitPrice) ? formatPrice(unitPrice * item.quantity) : "Price to confirm"}`;
+    const priceDetails = Number.isFinite(unitPrice)
+      ? `${formatPrice(unitPrice)} each${unitLabel ? ` (${unitLabel})` : ""} — ${formatPrice(unitPrice * item.quantity)}`
+      : "Price to confirm";
+    const brandDetails = item.brand ? ` · ${item.brand.name}` : "";
+    return `${getProductDisplayName(item)}${brandDetails} x ${item.quantity} — ${priceDetails}`;
   });
+
+  function sendWhatsAppOrder(event) {
+    event.preventDefault();
+    if (!customerName.trim() || !customerPhone.trim() || !deliveryAddress.trim()) {
+      setNotice("Please enter your name, mobile number, and delivery address.");
+      window.setTimeout(() => setNotice(""), 3000);
+      return;
+    }
+    if (!basketItems.length || hasUnpricedItems || !isLocalDelivery) {
+      setNotice("Please check your items and confirm delivery to PIN code 531036.");
+      window.setTimeout(() => setNotice(""), 3000);
+      return;
+    }
+
+    const message = [
+      "Namaste ManaRural! I would like to place this order.",
+      "",
+      `Name: ${customerName.trim()}`,
+      `Mobile: +91 ${customerPhone.trim()}`,
+      `Delivery address: ${deliveryAddress.trim()}`,
+      `PIN code: ${deliveryPincode.trim()}`,
+      "",
+      "Selected items:",
+      ...checkoutOrderLines.map((line) => `• ${line}`),
+      "",
+      `Grocery subtotal: ${formatPrice(cartTotal)}`,
+      `Delivery charges: ${deliveryCharge ? formatPrice(deliveryCharge) : "Free"}`,
+      `Order total: ${formatPrice(orderTotal)}`,
+    ].join("\n");
+
+    window.open(whatsappLink(message), "_blank", "noopener,noreferrer");
+  }
 
   function changeQuantity(id, amount) {
     if (id.startsWith("print-job-")) {
@@ -217,16 +283,15 @@ function App() {
     });
   }
 
-  function addToCart(product, variant) {
-    changeQuantity(variant ? `${product.id}::${variant.id}` : product.id, 1);
-    setNotice(`${product.name} added to your list`);
+  function addToCart(product, variant, brandId = "") {
+    changeQuantity(variant ? `${product.id}::${brandId || "any"}::${variant.id}` : product.id, 1);
+    setNotice(`${getProductDisplayName(product)} added to your list`);
     window.setTimeout(() => setNotice(""), 2400);
   }
 
   function addPrintJobToCart() {
     if (!printFiles.length) {
-      setNotice("Choose the document or image files you want to print first");
-      window.setTimeout(() => setNotice(""), 3000);
+      setPrintStatus("Choose at least one document before adding this print request.");
       return;
     }
     setPrintCart((current) => [...current, {
@@ -238,27 +303,73 @@ function App() {
     setCartOpen(true);
   }
 
-  function buyPrintJobNow() {
+  async function buyPrintJobNow() {
     if (!printFiles.length) {
-      setNotice("Choose the document or image files you want to print first");
-      window.setTimeout(() => setNotice(""), 3000);
+      setPrintStatus("Choose at least one document before requesting printing.");
       return;
     }
     const files = printFiles.map((file) => file.name);
     const message = [
-      "Namaste ManaRural! Please share a quote for this Xerox & printing request.",
+      "Namaste ManaRural! I would like to request Xerox & printing.",
       `Copies: ${printQuantity}`,
       `Print options: ${formatPrintOptions(printOptions)}`,
-      `Files to attach: ${files.join(", ")}`,
-      "I understand this is only a quote request, not a paid or confirmed order.",
+      `Page range: ${printOptions.pageRange.trim() || "All pages"}`,
+      `Documents: ${files.join(", ")}`,
+      "Please confirm price and availability before processing.",
     ].join("\n");
-    window.open(whatsappLink(message), "_blank", "noopener,noreferrer");
-    setNotice("Attach the selected files in WhatsApp to receive a print quote.");
-    window.setTimeout(() => setNotice(""), 4000);
+
+    try {
+      if (navigator.share && navigator.canShare?.({ files: printFiles })) {
+        setPrintStatus("Opening your device share sheet with the selected documents and print details. Choose WhatsApp to send them.");
+        await navigator.share({
+          title: "ManaRural Xerox & printing request",
+          text: message,
+          files: printFiles,
+        });
+        setPrintStatus("Share sheet closed. Check WhatsApp for the selected documents and request, then send the message.");
+        return;
+      }
+    } catch (shareError) {
+      if (shareError.name === "AbortError") {
+        setPrintStatus("Sharing was cancelled. Your selected documents are still available here; try again when ready.");
+        return;
+      }
+      setPrintStatus("Your browser could not share files directly. WhatsApp will open with the request; attach the documents there.");
+      window.open(whatsappLink(`${message}\n\nPlease attach the selected documents in this chat.`), "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    setPrintStatus("Your browser cannot attach files directly to WhatsApp. WhatsApp will open with your request; attach the documents there.");
+    window.open(whatsappLink(`${message}\n\nPlease attach the selected documents in this chat.`), "_blank", "noopener,noreferrer");
   }
 
   function addPrintFiles(files) {
-    setPrintFiles((current) => [...current, ...Array.from(files).filter((file) => !current.some((existing) => existing.name === file.name && existing.size === file.size))]);
+    const acceptedExtensions = /\.(pdf|jpe?g|png|docx?)$/i;
+    const incomingFiles = Array.from(files);
+    const supportedFiles = incomingFiles.filter((file) => acceptedExtensions.test(file.name));
+    const rejectedCount = incomingFiles.length - supportedFiles.length;
+    const additions = supportedFiles.filter((file) => !printFiles.some(
+      (existing) => existing.name === file.name && existing.size === file.size,
+    ));
+    const nextFiles = [...printFiles, ...additions];
+    setPrintFiles(nextFiles);
+    if (nextFiles.length) {
+      setPrintStatus(`${nextFiles.length} document${nextFiles.length === 1 ? "" : "s"} selected in this browser. They have not been uploaded yet.`);
+    } else if (rejectedCount) {
+      setPrintStatus("No supported documents selected. Choose PDF, JPG, PNG, DOC, or DOCX files.");
+    }
+    if (rejectedCount) {
+      setNotice(`${rejectedCount} unsupported file${rejectedCount === 1 ? " was" : "s were"} skipped. Choose PDF, JPG, PNG, DOC, or DOCX.`);
+      window.setTimeout(() => setNotice(""), 4000);
+    }
+  }
+
+  function removePrintFile(fileIndex) {
+    const nextFiles = printFiles.filter((_, index) => index !== fileIndex);
+    setPrintFiles(nextFiles);
+    setPrintStatus(nextFiles.length
+      ? `${nextFiles.length} document${nextFiles.length === 1 ? "" : "s"} selected in this browser. They have not been uploaded yet.`
+      : "No files selected yet.");
   }
 
   function formatPrintOptions(options) {
@@ -333,9 +444,23 @@ function App() {
           <a href="#home">Home</a>
           <a href="#offerings">Our offerings</a>
           <a href="#about">About us</a>
+          <a href={`${import.meta.env.BASE_URL}policies`}>Policies</a>
         </nav>
         <div className="header-actions">
-          <a className="header-contact" href={`tel:+${whatsappNumber}`}>+91 73069 99649</a>
+          <a className="header-contact" href={`tel:+${whatsappNumber}`}>+91 85002 74274</a>
+          <nav className="header-account-links" aria-label="Account navigation">
+            {demoSession ? (
+              <>
+                {demoSession.role === "admin" && <a href={`${import.meta.env.BASE_URL}admin`}>Admin panel</a>}
+                <button onClick={() => { endDemoSession(); window.location.assign(import.meta.env.BASE_URL); }}>Sign out</button>
+              </>
+            ) : (
+              <>
+                <a href={`${import.meta.env.BASE_URL}signin`}>Sign in</a>
+                <a className="header-signup" href={`${import.meta.env.BASE_URL}signup`}>Create account</a>
+              </>
+            )}
+          </nav>
           <button className="icon-button cart-trigger" onClick={() => setCartOpen(true)} aria-label={`Open basket, ${cartCount} items`}>
             <Icon name="bag" />
             <span>Basket</span>
@@ -373,6 +498,10 @@ function App() {
           <i />
           <div><span>⌁</span><b>One easy place</b><small>Products & helpful services</small></div>
         </section>
+        <aside className="cash-delivery-notice" aria-label="Grocery payment and delivery information">
+          <span aria-hidden="true">🚚</span>
+          <p><strong>Grocery orders: cash on delivery only.</strong> Our team will call you to confirm, then bring your order to your door. Please do not pay through this app or send advance payment.</p>
+        </aside>
 
         <section className="offerings section-wrap" id="offerings">
           <div className="section-heading">
@@ -395,27 +524,30 @@ function App() {
                 {categories.map((category) => <button key={category.id} className={activeCategory === category.id ? "category-chip active" : "category-chip"} onClick={() => setActiveCategory(category.id)}><span>{category.icon}</span>{category.name}</button>)}
               </div>
               {search ? (
-                matchingItems.length ? <div className="item-results" aria-live="polite">{matchingItems.map((item) => <button className="inventory-item" key={item.id} onClick={() => addToCart(item)}><span className="inventory-item-copy"><span>{item.name}</span><small className="inventory-category">{item.detail}</small></span><span className="inventory-price">{Number.isFinite(item.price) ? formatPrice(item.price) : "Price not set"}{item.label && <small> / {item.label}</small>}</span><span className="inventory-add"><Icon name="plus" size={15} /> Add</span></button>)}</div>
+                matchingItems.length ? <div className="item-results" aria-live="polite">{matchingItems.map((item) => <button className="inventory-item" key={item.id} onClick={() => addToCart(item)}><span className="inventory-item-copy"><span>{getProductDisplayName(item)}</span><small className="inventory-category">{item.detail}</small></span><span className="inventory-price">{Number.isFinite(item.price) ? formatPrice(item.price) : "Price not set"}{item.label && <small> / {item.label}</small>}</span><span className="inventory-add"><Icon name="plus" size={15} /> Add</span></button>)}</div>
                   : <div className="empty-search"><span>🔎</span><h3>No exact match just yet</h3><p>Try another search or ask us on WhatsApp—we may still have it in store.</p><button className="text-link" onClick={() => window.open(whatsappLink(`Namaste ManaRural! Do you have ${search}?`), "_blank", "noopener,noreferrer")}>Ask us about “{search}” <Icon name="arrow" size={16} /></button></div>
               ) : (
                 <div className="product-grid">
                 {filteredProducts.map((product, index) => (
                   (() => {
                     const selectedVariant = product.variants.find((variant) => variant.id === selectedVariants[product.id]) || product.variants[0];
-                    const cartKey = `${product.id}::${selectedVariant.id}`;
+                    const productBrands = getProductBrands(product);
+                    const selectedBrandId = selectedBrands[product.id] || "";
+                    const cartKey = `${product.id}::${selectedBrandId || "any"}::${selectedVariant.id}`;
                     const quantity = cart[cartKey] || 0;
                     return (
                       <article className={`product-card ${product.color}`} key={product.id}>
-                        <div className="product-image-wrap"><img src={`https://images.unsplash.com/${product.image}?auto=format&fit=crop&w=720&q=82`} alt={product.name} loading={index > 3 ? "lazy" : "eager"} /><span className="local-pick">LOCAL PICK</span></div>
+                        <div className="product-image-wrap"><img src={`https://images.unsplash.com/${product.image}?auto=format&fit=crop&w=720&q=82`} alt={getProductDisplayName(product)} loading={index > 3 ? "lazy" : "eager"} /><span className="local-pick">LOCAL PICK</span></div>
                         <div className="product-info">
                           <p>{product.detail}</p>
-                          <h4>{product.name}</h4>
+                          <h4>{getProductDisplayName(product)}</h4>
                           <div className="product-rating" aria-label={`${product.rating} out of 5, ${product.ratingCount} sample customer ratings`}><span aria-hidden="true">★★★★★</span><b>{product.rating}</b><small>{product.ratingCount} ratings</small></div>
+                          <label className="variant-picker"><span>Brand</span><select value={selectedBrandId} onChange={(event) => setSelectedBrands((current) => ({ ...current, [product.id]: event.target.value }))} aria-label={`Choose brand for ${product.name}`}><option value="">Any available brand</option>{productBrands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select></label>
                           <label className="variant-picker"><span>Pack</span><select value={selectedVariant.id} onChange={(event) => setSelectedVariants((current) => ({ ...current, [product.id]: event.target.value }))} aria-label={`Choose pack size for ${product.name}`}>{product.variants.map((variant) => <option key={variant.id} value={variant.id}>{variant.label}</option>)}</select></label>
                           <div className="product-purchase"><strong>{formatPrice(selectedVariant.price)}</strong><div className="product-quantity" aria-label={`${product.name} quantity`}>
                             <button onClick={() => changeQuantity(cartKey, -1)} aria-label={`Remove one ${product.name}, ${selectedVariant.label}`} disabled={!quantity}><Icon name="minus" size={14} /></button>
                             <span aria-live="polite">{quantity}</span>
-                            <button onClick={() => addToCart(product, selectedVariant)} aria-label={`Add one ${product.name}, ${selectedVariant.label}`}><Icon name="plus" size={14} /></button>
+                            <button onClick={() => addToCart(product, selectedVariant, selectedBrandId)} aria-label={`Add one ${product.name}${selectedBrandId ? `, ${productBrands.find((brand) => brand.id === selectedBrandId)?.name}` : ""}, ${selectedVariant.label}`}><Icon name="plus" size={14} /></button>
                           </div></div>
                         </div>
                       </article>
@@ -431,7 +563,7 @@ function App() {
               </div>
               {!search && <div className="aisle-list"><div className="aisle-heading"><div><p className="eyebrow">MORE FROM OUR SHELVES</p><h3>Find your everyday essentials.</h3></div><span>Ask us for today’s availability</span></div>{visibleCategories.map((category) => {
                 const categoryBrands = brands.filter((brand) => brand.category === category.id && brand.status?.toLowerCase() !== "inactive");
-                return <section className="aisle" key={category.id}><div className="aisle-title"><span>{category.icon}</span><div><h4>{category.name}</h4><small>{category.description}</small></div><b>{category.items.length} items</b></div><div className="aisle-brands"><b>Brands</b>{categoryBrands.length ? categoryBrands.map((brand) => <span className="aisle-brand" key={brand.id}>{brand.name}</span>) : <small>Ask us for available brands</small>}<small className="aisle-brand-note">Check local availability.</small></div><div className="inventory-grid">{inventoryItems.filter((item) => item.category === category.id).map((item) => <button className="inventory-item" key={item.id} onClick={() => addToCart(item)}><span>{item.name}</span><span className="inventory-price">{Number.isFinite(item.price) ? formatPrice(item.price) : "Price not set"}{item.label && <small> / {item.label}</small>}</span><span className="inventory-add"><Icon name="plus" size={14} /> Add</span></button>)}</div></section>;
+                return <section className="aisle" key={category.id}><div className="aisle-title"><span>{category.icon}</span><div><h4>{category.name}</h4><small>{category.description}</small></div><b>{category.items.length} items</b></div><div className="aisle-brands"><b>Brands</b>{categoryBrands.length ? categoryBrands.map((brand) => <span className="aisle-brand" key={brand.id}>{brand.name}</span>) : <small>Ask us for available brands</small>}<small className="aisle-brand-note">Check local availability.</small></div><div className="inventory-grid">{inventoryItems.filter((item) => item.category === category.id).map((item) => <button className="inventory-item" key={item.id} onClick={() => addToCart(item)}><span>{getProductDisplayName(item)}</span><span className="inventory-price">{Number.isFinite(item.price) ? formatPrice(item.price) : "Price not set"}{item.label && <small> / {item.label}</small>}</span><span className="inventory-add"><Icon name="plus" size={14} /> Add</span></button>)}</div></section>;
               })}</div>}
               <div className="category-note"><span>✳</span><p><b>Looking for something else?</b> We have staples, spices, snacks, drinks, dairy, personal care and home essentials in store.</p><a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noreferrer">Ask our team <Icon name="arrow" size={15} /></a></div>
             </div>
@@ -441,7 +573,7 @@ function App() {
               {printServiceOpen ? (
                 <section className="print-order">
                   <button className="print-back" onClick={() => setPrintServiceOpen(false)}>← All digital services</button>
-                  <div className="print-order-heading"><p className="eyebrow">XEROX & PRINTING</p><h3>Upload your files and place your order.</h3><p>We’ll confirm print options, pricing and delivery with you before processing.</p></div>
+                  <div className="print-order-heading"><p className="eyebrow">XEROX & PRINTING</p><h3>Upload your files and request printing on WhatsApp.</h3><p>Share your documents with your print settings. We’ll confirm pricing and availability before processing.</p></div>
                   <div className="print-quantity"><span>Copies</span><div className="print-quantity-control"><button onClick={() => setPrintQuantity((count) => Math.max(1, count - 1))} aria-label="Reduce number of copies" disabled={printQuantity <= 1}>−</button><strong aria-live="polite">{printQuantity}</strong><button onClick={() => setPrintQuantity((count) => count + 1)} aria-label="Increase number of copies">+</button></div></div>
                   <fieldset className="print-options">
                     <legend>Print options</legend>
@@ -450,21 +582,26 @@ function App() {
                     <label><span>Print sides</span><select value={printOptions.sides} onChange={(event) => setPrintOptions((current) => ({ ...current, sides: event.target.value }))}><option>Single-sided</option><option>Double-sided</option></select></label>
                     <label><span>Page range <small>(optional)</small></span><input value={printOptions.pageRange} onChange={(event) => setPrintOptions((current) => ({ ...current, pageRange: event.target.value }))} placeholder="e.g. 1-3, 5" pattern="[0-9,\\-\\s]*" title="Enter page numbers and ranges, such as 1-3, 5" /></label>
                   </fieldset>
-                  <p className="print-options-note">These settings apply to every uploaded file. Leave page range blank to print all pages.</p>
+                  <p className="print-options-note">These settings apply to every selected file. Leave page range blank to print all pages.</p>
+                  <aside className="print-customer-note" role="note">
+                    <b>Customer note / వినియోగదారులకు గమనిక</b>
+                    <span>Your files are selected only in this browser; they are not uploaded or sent yet. After choosing “Request printing on WhatsApp”, select WhatsApp in the share sheet if available. Otherwise, attach the files manually in the WhatsApp chat.</span>
+                    <span lang="te">మీ ఫైళ్లు ఈ బ్రౌజర్‌లో మాత్రమే ఎంపిక చేయబడతాయి; ఇంకా అప్‌లోడ్ లేదా పంపబడలేదు. “వాట్సాప్‌లో ప్రింటింగ్ అభ్యర్థించండి” నొక్కిన తర్వాత షేర్ మెనూలో వాట్సాప్‌ను ఎంచుకోండి. ఆ ఎంపిక లేకపోతే, వాట్సాప్ చాట్‌లో ఫైళ్లను మీరే జత చేయండి.</span>
+                  </aside>
                   <label className="print-upload" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); addPrintFiles(event.dataTransfer.files); }}>
                     <input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple onChange={(event) => { addPrintFiles(event.target.files); event.target.value = ""; }} />
-                    <span>Drag &amp; drop your files or <b>Browse</b></span>
+                    <span>Drag &amp; drop your files or <b>Browse files</b></span>
                     <small>PDF, JPG, PNG, DOC or DOCX</small>
                   </label>
-                  {printFiles.length > 0 && <ul className="print-file-list">{printFiles.map((file, index) => <li key={`${file.name}-${file.size}-${index}`}><span>{file.name}</span><button onClick={() => setPrintFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))} aria-label={`Remove ${file.name}`}>×</button></li>)}</ul>}
-                  <div className="print-order-actions"><button className="print-add-button" onClick={addPrintJobToCart}>Add to basket</button><button className="print-buy-button" onClick={buyPrintJobNow}>Request print quote</button></div>
+                  {printFiles.length > 0 && <ul className="print-file-list">{printFiles.map((file, index) => <li key={`${file.name}-${file.size}-${index}`}><span>{file.name}</span><button onClick={() => removePrintFile(index)} aria-label={`Remove ${file.name}`}>×</button></li>)}</ul>}
+                  <p className="print-upload-status" role="status" aria-live="polite">{printStatus}</p>
+                  <div className="print-order-actions"><button className="print-add-button" onClick={addPrintJobToCart}>Add to basket</button><button className="print-whatsapp-button" onClick={buyPrintJobNow}><Icon name="whatsapp" size={18} /> Request printing on WhatsApp</button></div>
                   <section className="print-how"><h4>HOW IT WORKS</h4><div className="print-steps">
                     <article><span>⇧</span><h5>Upload &amp; Place Your Order</h5><p>Upload your favorite pictures or documents and place your order.</p></article>
                     <article><span>🛒</span><h5>Fast Production &amp; Dispatch</h5><p>We carefully prepare your prints and confirm timing with you.</p></article>
                     <article><span>●</span><h5>Track Your Order</h5><p>Receive updates until your order reaches your doorstep.</p></article>
                   </div></section>
                   <a className="print-help-button" href={whatsappLink("Namaste ManaRural! I need help with a Xerox or printing order.")} target="_blank" rel="noreferrer"><Icon name="whatsapp" size={18} /> NEED HELP? ORDER ON WHATSAPP</a>
-                  <p className="print-upload-note">Files are selected in your browser only. After WhatsApp opens, attach the files in the chat so our team can receive them.</p>
                 </section>
               ) : scheduledService ? (
                 <section className="scheduled-service-form">
@@ -486,6 +623,23 @@ function App() {
               ) : (
                 <>
                   <div className="service-grid">{digitalServices.map((service) => <article className="service-card" key={service.title}><span className="service-icon">{service.icon}</span><div><h4>{service.title}</h4><p>{service.detail}</p></div><button onClick={() => service.title === "Xerox & printing" ? setPrintServiceOpen(true) : requestService(service)} aria-label={service.title === "Xerox & printing" ? "Open Xerox and printing order" : `Enquire about ${service.title}`}><Icon name="arrow" size={17} /></button></article>)}</div>
+                  <section className="service-price-list" aria-labelledby="service-price-list-title">
+                    <div className="service-price-heading">
+                      <div><p className="eyebrow">CLEAR, UPFRONT PRICING</p><h3 id="service-price-list-title">Service price list <span>సేవల ధరల వివరాలు</span></h3></div>
+                      <b>All prices in ₹ / అన్ని ధరలు రూపాయల్లో</b>
+                    </div>
+                    <div className="service-price-table-wrap">
+                      <table className="service-price-table">
+                        <thead><tr><th scope="col">Service / సేవ</th><th scope="col">Unit / వివరాలు</th><th scope="col">Price / ధర</th></tr></thead>
+                        <tbody>{digitalServicePrices.map((item) => <tr key={item.service}>
+                          <td><span>{item.service}</span><small lang="te">{item.telugu}</small></td>
+                          <td>{item.detail}</td>
+                          <td>{item.price}</td>
+                        </tr>)}</tbody>
+                      </table>
+                    </div>
+                    <p className="service-price-note">Mobile &amp; DTH recharge charges for ₹199–₹200 are not specified in the supplied price list; please confirm with our team. / ₹199–₹200 రీఛార్జ్ ఛార్జీలు ధరల పట్టికలో ఇవ్వలేదు; మా బృందంతో నిర్ధారించండి.</p>
+                  </section>
                   <div className="service-help"><span>Not sure what to ask for?</span><a href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent("Namaste ManaRural! I need help with a digital service.")}`} target="_blank" rel="noreferrer"><Icon name="whatsapp" size={18} /> Chat with our team</a></div>
                 </>
               )}
@@ -501,7 +655,7 @@ function App() {
       </main>
 
       <footer className="site-footer">
-        <div className="footer-main"><div className="footer-brand"><span className="brand-name">Mana<span>Rural</span></span><p>Everything you need, one place.<br />Your local basket of products.</p></div><div className="footer-contact"><span className="eyebrow">HERE FOR OUR COMMUNITY</span><a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noreferrer"><Icon name="whatsapp" size={18} /> +91 73069 99649</a><a href="mailto:manaruralservices@gmail.com">✉ &nbsp;manaruralservices@gmail.com</a></div><a className="back-top" href={`${import.meta.env.BASE_URL}admin`}>Admin panel</a><a className="back-top" href="#home">Back to top ↑</a></div>
+        <div className="footer-main"><div className="footer-brand"><span className="brand-name">Mana<span>Rural</span></span><p>Everything you need, one place.<br />Your local basket of products.</p></div><div className="footer-contact"><span className="eyebrow">HERE FOR OUR COMMUNITY</span><a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noreferrer"><Icon name="whatsapp" size={18} /> +91 85002 74274</a><a href="mailto:manaruralservices@gmail.com">✉ &nbsp;manaruralservices@gmail.com</a></div><div className="footer-account-links"><a href={`${import.meta.env.BASE_URL}policies`}>Policies</a></div><a className="back-top" href="#home">Back to top ↑</a></div>
         <div className="footer-bottom"><span>© {new Date().getFullYear()} ManaRural · RuralReachServices</span><span>మన ఊరు • మన అవసరాలు • ఒకే చోట</span></div>
       </footer>
 
@@ -516,7 +670,7 @@ function App() {
                   <button className="icon-button" onClick={() => { setCartOpen(false); setCheckoutOpen(false); }} aria-label="Close checkout"><Icon name="close" /></button>
                 </div>
                 <div className="checkout-content">
-                  <form className="checkout-customer-fields" onSubmit={(event) => event.preventDefault()}>
+                  <form id="checkout-customer-form" className="checkout-customer-fields" onSubmit={sendWhatsAppOrder}>
                     <label>Full name<input required autoComplete="name" value={customerName} onChange={(event) => setCustomerName(event.target.value)} /></label>
                     <label>Mobile number<input required type="tel" inputMode="numeric" pattern="[0-9]{10}" maxLength="10" autoComplete="tel" placeholder="10-digit mobile number" value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} /></label>
                     <label>Delivery address<textarea required rows="3" autoComplete="street-address" value={deliveryAddress} onChange={(event) => setDeliveryAddress(event.target.value)} /></label>
@@ -526,21 +680,25 @@ function App() {
                     <h3>Order summary</h3>
                     <ul>{checkoutOrderLines.map((line, index) => <li key={`${basketItems[index].cartKey}-summary`}>{line}</li>)}</ul>
                     <div className="checkout-total"><span>Grocery subtotal</span><strong>{formatPrice(cartTotal)}</strong></div>
-                    <p>Delivery charges, if any, will be confirmed before payment.</p>
+                    <div className="checkout-total"><span>Delivery charges</span><strong>{deliveryCharge ? formatPrice(deliveryCharge) : "Free"}</strong></div>
+                    <div className="checkout-total checkout-grand-total"><span>Order total</span><strong>{formatPrice(orderTotal)}</strong></div>
+                    <p>Orders of ₹300 or less have a ₹30 delivery charge. Delivery is free above ₹300.</p>
                   </section>
                   <section className="checkout-payment-notice">
-                    <h3>Payment</h3>
-                    <p>Online payment will be connected to the .NET backend. The WhatsApp order summary will only be sent after the backend verifies successful payment.</p>
+                    <h3>Send your order on WhatsApp</h3>
+                    <p>We’ll send your delivery details, selected items, and price breakdown to our team. They’ll confirm your order with you.</p>
                     <div className="checkout-whatsapp-preview">
-                      <b>WhatsApp order message after payment</b>
-                      <span>Order summary · {customerName.trim() || "Customer"} · +91 {customerPhone || "mobile"} · PIN {deliveryPincode || "—"}</span>
+                      <b>WhatsApp order preview</b>
+                      <span>{customerName.trim() || "Customer"} · +91 {customerPhone || "mobile"} · PIN {deliveryPincode || "—"}</span>
+                      {deliveryAddress.trim() && <span>Deliver to: {deliveryAddress.trim()}</span>}
                       {checkoutOrderLines.map((line, index) => <span key={`whatsapp-${basketItems[index].cartKey}`}>{line}</span>)}
-                      <strong>Total: {formatPrice(cartTotal)}</strong>
+                      <span>Delivery charges: {deliveryCharge ? formatPrice(deliveryCharge) : "Free"}</span>
+                      <strong>Order total: {formatPrice(orderTotal)}</strong>
                     </div>
-                    <button className="button button-primary checkout-pay-button" type="button" disabled>
-                      Payment setup required
+                    <button className="button button-primary checkout-whatsapp-button" type="submit" form="checkout-customer-form">
+                      <Icon name="whatsapp" size={18} /> Send order on WhatsApp
                     </button>
-                    <small>Payment is not enabled yet. No order will be marked paid or sent to WhatsApp from this preview.</small>
+                    <small>WhatsApp will open with your order details ready to send. Our team will call to confirm and deliver to your door. Pay cash on delivery only—do not pay through this app.</small>
                   </section>
                 </div>
               </>
@@ -557,8 +715,8 @@ function App() {
                         <div className="cart-item" key={item.cartKey}>
                           {item.image ? <img src={`https://images.unsplash.com/${item.image}?auto=format&fit=crop&w=160&h=160&q=75`} alt="" /> : <span className="cart-service-icon">🖨️</span>}
                           <div className="cart-item-copy">
-                            <b>{item.name}</b>
-                            <small>{item.printOptions ? `${formatPrintOptions(item.printOptions)} · ${item.files.join(", ")}` : item.variant ? `${item.variant.label} · ${formatPrice(item.variant.price)} each` : Number.isFinite(item.unitPrice) ? `${item.unitLabel} · ${formatPrice(item.unitPrice)} each` : item.files?.length ? `Files: ${item.files.join(", ")}` : "Price not set"}</small>
+                            <b>{getProductDisplayName(item)}</b>
+                            <small>{item.printOptions ? `${formatPrintOptions(item.printOptions)} · ${item.files.join(", ")}` : item.variant ? `${item.brand ? `${item.brand.name} · ` : ""}${item.variant.label} · ${formatPrice(item.variant.price)} each` : Number.isFinite(item.unitPrice) ? `${item.unitLabel} · ${formatPrice(item.unitPrice)} each` : item.files?.length ? `Files: ${item.files.join(", ")}` : "Price not set"}</small>
                             <div className="quantity-control"><button onClick={() => changeQuantity(item.cartKey, -1)} aria-label={`Remove one ${item.name}`}><Icon name="minus" size={14} /></button><span>{item.quantity}</span><button onClick={() => changeQuantity(item.cartKey, 1)} aria-label={`Add one ${item.name}`}><Icon name="plus" size={14} /></button></div>
                           </div>
                           <strong className="cart-line-total">{item.variant ? formatPrice(item.variant.price * item.quantity) : Number.isFinite(item.unitPrice) ? formatPrice(item.unitPrice * item.quantity) : "On request"}</strong>
@@ -568,15 +726,14 @@ function App() {
                     </div>
                     <div className="drawer-footer">
                       <div className="cart-estimate"><span>Grocery subtotal</span><strong>{formatPrice(cartTotal)}</strong></div>
-                      <p>Local delivery is currently available only for PIN code 531036. Minimum grocery subtotal for checkout: ₹500.</p>
+                      <p>Local delivery is currently available only for PIN code 531036. Orders of ₹300 or less have a ₹30 delivery charge; delivery is free above ₹300.</p>
                       <label className="delivery-pincode-field">Delivery PIN code
                         <input inputMode="numeric" pattern="[0-9]{6}" maxLength="6" placeholder="Enter 531036" value={deliveryPincode} onChange={(event) => setDeliveryPincode(event.target.value.replace(/\D/g, "").slice(0, 6))} />
                       </label>
-                      {!hasUnpricedItems && !meetsMinimumOrder && <p className="checkout-eligibility-message">Add ₹{formatPrice(500 - cartTotal)} more in groceries to reach the checkout minimum.</p>}
                       {!hasUnpricedItems && deliveryPincode.length === 6 && !isLocalDelivery && <p className="checkout-eligibility-message">Sorry, delivery is currently limited to PIN code 531036.</p>}
                       {hasUnpricedItems && <p className="checkout-eligibility-message">Some items need a confirmed price before checkout can continue.</p>}
                       <button className="button button-primary whatsapp-order" onClick={() => setCheckoutOpen(true)} disabled={!canProceedToCheckout}>Proceed to checkout</button>
-                      <p className="checkout-payment-disclaimer">Payment integration is planned for the .NET backend. WhatsApp order notification will follow verified payment only.</p>
+                      <p className="checkout-payment-disclaimer">Send your order details directly to our team on WhatsApp.</p>
                     </div>
                   </>
                 ) : (

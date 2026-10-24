@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
-import { featuredProducts, groceryCategories, sampleBrands } from "../shared/catalog.js";
+import { featuredProducts, groceryCategories, productTeluguNames, sampleBrands } from "../shared/catalog.js";
 import { readStoredList, writeStoredList } from "../shared/adminStorage.js";
+import { endDemoSession } from "../shared/demoAuth.js";
 import "./admin.css";
 
 const sections = {
@@ -8,6 +9,7 @@ const sections = {
     title: "Products",
     fields: [
       ["name", "Product name", "text"],
+      ["teluguName", "Product name in Telugu", "text"],
       ["detail", "Description", "text"],
       ["category", "Category ID", "text"],
       ["image", "Image ID / URL", "text"],
@@ -16,7 +18,7 @@ const sections = {
       ["ratingCount", "Rating count", "number"],
       ["color", "Card color theme", "text"],
     ],
-    columns: ["name", "category", "variants", "rating", "ratingCount"],
+    columns: ["name", "teluguName", "category", "variants", "rating", "ratingCount"],
   },
   categories: {
     title: "Categories",
@@ -169,6 +171,8 @@ function toForm(section, item) {
       form[name] = (item.variants || []).map((variant) => `${variant.label}:${variant.price}`).join(", ");
     } else if (name === "items") {
       form[name] = (item.items || []).join(", ");
+    } else if (name === "teluguName") {
+      form[name] = item[name] ?? productTeluguNames[item.name] ?? "";
     } else {
       form[name] = item[name] ?? "";
     }
@@ -216,6 +220,7 @@ function fromForm(section, form, current) {
 function displayValue(section, item, column) {
   if (column === "variants") return (item.variants || []).map((variant) => `${variant.label} · ₹${variant.price}`).join(", ");
   if (column === "items") return `${(item.items || []).length} items`;
+  if (column === "teluguName") return item.teluguName || productTeluguNames[item.name] || "—";
   return item[column] ?? "—";
 }
 
@@ -361,10 +366,12 @@ export default function AdminPanel() {
     <div className="admin-shell">
       <header className="admin-header">
         <a className="admin-brand" href={import.meta.env.BASE_URL}>Mana<span>Rural</span><small>ADMIN</small></a>
+        <button className="admin-store-link" onClick={() => { endDemoSession(); window.location.assign(import.meta.env.BASE_URL); }}>Sign out</button>
         <a className="admin-store-link" href={import.meta.env.BASE_URL}>← Back to storefront</a>
       </header>
       <main className="admin-main">
         <div className="admin-title"><div><p className="admin-eyebrow">STORE MANAGEMENT</p><h1>Admin panel</h1><p>Manage your catalog and keep a local order register.</p></div><div className="admin-storage-label">Saved in this browser</div></div>
+        <div className="admin-warning"><b>Demo access only:</b> this frontend checks a phone number but does not verify identity. Do not use this gate to protect real admin data. Connect .NET authentication and server-side authorization before launch.</div>
         <div className="admin-warning"><b>Browser-only storage:</b> this panel has no sign-in or server database. Changes and order history stay in this browser and do not sync to other devices. Export orders regularly for backup.</div>
         <nav className="admin-tabs" aria-label="Admin sections">
           <button className={active === "reports" ? "active" : ""} onClick={() => changeSection("reports")}>Reports</button>

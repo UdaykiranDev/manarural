@@ -4,6 +4,7 @@
 .admin-brand > span { color: #77a451; }
 .admin-brand small { align-self: center; margin-left: 9px; padding: 4px 6px; border-radius: 2px; background: #edf2e7; color: #617d4d; font: 700 8px "DM Sans", sans-serif; letter-spacing: .12em; }
 .admin-store-link { color: #55704c; font-size: 12px; font-weight: 600; }
+button.admin-store-link { padding: 0; border: 0; background: transparent; cursor: pointer; font: inherit; }
 .admin-main { max-width: 1320px; margin: 0 auto; padding: 35px 28px 60px; }
 .admin-title { display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-bottom: 22px; }
 .admin-title h1 { margin: 0 0 5px; color: #263a2b; font: 700 29px "Manrope", sans-serif; letter-spacing: -.05em; }
