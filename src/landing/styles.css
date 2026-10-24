@@ -247,6 +247,16 @@ h1, h2, h3, h4, p { margin-top: 0; }
 .print-options label small { color: #999d95; font-size: 8px; font-weight: 400; }
 .print-options select, .print-options input { width: 100%; min-height: 35px; padding: 7px 9px; border: 1px solid #e3e5dc; border-radius: 2px; outline-color: #76966a; background: #fff; color: #344637; font: inherit; font-size: 10px; }
 .print-options-note { margin: 0 0 13px; color: #898e85; font-size: 8px; line-height: 1.5; }
+.print-page-count { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; color: #737a70; font-size: 10px; }
+.print-page-count input { width: 110px; min-height: 36px; padding: 7px 9px; border: 1px solid #e3e5dc; background: #fff; color: #344637; font: inherit; }
+.service-checkout-summary { display: grid; gap: 8px; padding: 13px; border: 1px solid #e7e9e2; background: #f7f8f2; }
+.service-checkout-summary h4 { margin: 0 0 2px; color: #344637; font: 700 12px "Manrope", sans-serif; }
+.service-checkout-summary > div { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; color: #626d5c; font-size: 10px; line-height: 1.5; }
+.service-checkout-summary > div strong { color: #3e5d3d; text-align: right; }
+.service-checkout-summary .service-checkout-total { padding-top: 8px; border-top: 1px solid #e0e4d8; color: #344637; font-weight: 700; }
+.service-checkout-summary .service-checkout-total strong { font-size: 13px; }
+.service-checkout-summary > small { color: #85887d; font-size: 9px; line-height: 1.55; }
+.service-checkout-summary > small[lang="te"] { font-family: "Noto Sans Telugu", sans-serif; }
 .print-customer-note { display: grid; gap: 5px; margin: 0 0 10px; padding: 10px 12px; border-left: 3px solid #d0a63b; background: #fbf6e8; color: #6f6241; font-size: 9px; line-height: 1.55; }
 .print-customer-note b { color: #5a4c2d; font-size: 10px; }
 .print-customer-note span[lang="te"] { font-family: "Noto Sans Telugu", sans-serif; }

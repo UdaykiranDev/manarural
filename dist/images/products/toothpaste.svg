@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600" viewBox="0 0 900 600" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="76" y1="44" x2="829" y2="567" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E7F2F8"/>
+      <stop offset="1" stop-color="#DDF1E6"/>
+    </linearGradient>
+    <linearGradient id="tube" x1="355" y1="127" x2="570" y2="440" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF"/>
+      <stop offset="1" stop-color="#D8E4EB"/>
+    </linearGradient>
+    <filter id="shadow" x="264" y="419" width="373" height="93" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="15"/>
+    </filter>
+  </defs>
+  <rect width="900" height="600" rx="28" fill="url(#bg)"/>
+  <circle cx="166" cy="435" r="91" fill="#FFF" fill-opacity=".48"/>
+  <circle cx="759" cy="142" r="68" fill="#FFF" fill-opacity=".5"/>
+  <ellipse cx="452" cy="469" rx="162" ry="22" fill="#284858" fill-opacity=".2" filter="url(#shadow)"/>
+  <path d="M355 143c0-15 12-27 27-27h136c15 0 27 12 27 27v47l-20 201c-2 19-18 34-37 34h-76c-19 0-35-15-37-34l-20-201v-47Z" fill="url(#tube)" stroke="#AFC5D0" stroke-width="4"/>
+  <path d="M355 153h190v53H355v-53Z" fill="#3197B6"/>
+  <path d="M369 207h162l-16 154c-2 16-15 28-31 28h-68c-16 0-29-12-31-28l-16-154Z" fill="#FFF" fill-opacity=".84"/>
+  <path d="M395 254h110" stroke="#2995B7" stroke-width="12" stroke-linecap="round"/>
+  <path d="M408 282h83" stroke="#6DBE9B" stroke-width="8" stroke-linecap="round"/>
+  <path d="M421 309h56" stroke="#8BB5C4" stroke-width="7" stroke-linecap="round"/>
+  <path d="M395 412h110v28c0 10-8 18-18 18h-74c-10 0-18-8-18-18v-28Z" fill="#5B7482"/>
+  <path d="M442 354c14-23 29-29 45-19-5 21-18 32-39 33-4-4-6-9-6-14Z" fill="#70B681"/>
+  <circle cx="263" cy="199" r="12" fill="#FFF" fill-opacity=".85"/>
+  <circle cx="620" cy="364" r="17" fill="#FFF" fill-opacity=".72"/>
+</svg>

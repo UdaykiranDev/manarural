@@ -48,7 +48,8 @@ export function SignInPage() {
   return (
     <PageLayout eyebrow="WELCOME BACK" title="Sign in">
       <p className="account-intro">Enter your mobile number to continue to ManaRural. Admin demo sign-in also requires a PIN.</p>
-      <div className="demo-auth-warning"><b>Demo only:</b> this form does not verify phone ownership. The PIN is included in frontend code and does not securely protect admin access. Use .NET API authentication before launch.</div>
+      <div className="demo-auth-warning"><b>Demo only:</b> this form does not verify phone ownership.</div>
+      {/* <div className="demo-auth-warning"><b>Demo only:</b> this form does not verify phone ownership. The PIN is included in frontend code and does not securely protect admin access. Use .NET API authentication before launch.</div> */}
       <form className="account-form" onSubmit={signIn}>
         <label>Mobile number
           <input type="tel" inputMode="numeric" autoComplete="tel" maxLength="10" placeholder="10-digit mobile number" value={phone} onChange={(event) => setPhone(event.target.value.replace(/\D/g, "").slice(0, 10))} required />
@@ -60,11 +61,11 @@ export function SignInPage() {
         <button className="button button-primary" type="submit">{isAdminPhone ? "Continue to admin demo" : "Continue"}</button>
       </form>
       <p className="account-switch">New to ManaRural? <a href={getPath("signup")}>Create an account</a></p>
-      <div className="demo-accounts">
+      {/* <div className="demo-accounts">
         <b>Demo numbers</b>
         <span>Admin preview: +91 {ADMIN_PHONE}</span>
         <span>Customer preview: +91 {SAMPLE_CUSTOMER_PHONE}</span>
-      </div>
+      </div> */}
     </PageLayout>
   );
 }
@@ -115,7 +116,7 @@ export function PoliciesPage() {
       <div className="policy-content">
         <section id="privacy">
           <h2>Privacy policy</h2>
-          <p>When you submit an order request, the name, mobile number, delivery address, PIN code, and selected items you enter are included in a WhatsApp message addressed to ManaRural at +91 85002 74274. Review the message before choosing to send it.</p>
+          <p>When you submit an order request, the name, mobile number, delivery address, PIN code, and selected items you enter are included in a WhatsApp message addressed to ManaRural at +91 89343 57875. Review the message before choosing to send it.</p>
           <p>This demo does not have a server account system. Sign-in and sign-up details are not verified, and a demo session is held in this browser only. Do not enter sensitive information. When the .NET API is introduced, this policy should be updated to explain its data storage, access, retention, and deletion practices.</p>
         </section>
         <section id="terms">
@@ -127,7 +128,7 @@ export function PoliciesPage() {
           <h2>Delivery and cancellation</h2>
           <p>Local delivery is currently limited to PIN code 531036. A ₹30 delivery charge applies when the grocery subtotal is ₹300 or less. Delivery is free when the grocery subtotal is above ₹300.</p>
           <p>For grocery orders, our team will call you to confirm the order and arrange delivery to your door. Payment is cash on delivery only. Do not pay through this app or send advance payment.</p>
-          <p>Orders are not confirmed until the ManaRural team responds. To change or cancel a request, contact the team promptly on WhatsApp at +91 85002 74274. The team will confirm whether a change or cancellation is possible.</p>
+          <p>Orders are not confirmed until the ManaRural team responds. To change or cancel a request, contact the team promptly on WhatsApp at +91 89343 57875. The team will confirm whether a change or cancellation is possible.</p>
         </section>
       </div>
       <p className="policy-draft-note">Draft policy text for the demo. Review and update it for your business and the .NET API before launch.</p>

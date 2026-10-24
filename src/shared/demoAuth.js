@@ -1,5 +1,5 @@
 export const ADMIN_PHONE = "8500274274";
-export const ADMIN_DEMO_PIN = "234754";
+export const ADMIN_DEMO_PIN = "949290";
 export const SAMPLE_CUSTOMER_PHONE = "9177367579";
 const demoSessionKey = "manarural:demo-session";
 

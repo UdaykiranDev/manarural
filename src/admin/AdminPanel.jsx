@@ -12,7 +12,7 @@ const sections = {
       ["teluguName", "Product name in Telugu", "text"],
       ["detail", "Description", "text"],
       ["category", "Category ID", "text"],
-      ["image", "Image ID / URL", "text"],
+      ["image", "Image URL or uploaded image", "text"],
       ["variants", "Pack variants (label:price, comma separated)", "text"],
       ["rating", "Rating out of 5", "number"],
       ["ratingCount", "Rating count", "number"],
@@ -66,6 +66,43 @@ const reportPeriods = {
   monthly: "This month",
   yearly: "This year",
 };
+
+async function prepareProductImage(file) {
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    throw new Error("Choose a JPG, PNG, or WebP product image.");
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error("Product images must be 10 MB or smaller.");
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error("The selected image could not be opened."));
+      element.src = objectUrl;
+    });
+    const scale = Math.min(1, 640 / Math.max(image.naturalWidth, image.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Your browser could not prepare the selected image.");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const webpImage = canvas.toDataURL("image/webp", 0.8);
+    return webpImage.startsWith("data:image/webp")
+      ? webpImage
+      : canvas.toDataURL("image/jpeg", 0.82);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function isPreviewableProductImage(image) {
+  return /^(data:image\/|https?:\/\/|\/)/i.test(image)
+    || /\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i.test(image);
+}
 
 function getReportBuckets(period, now) {
   const buckets = [];
@@ -269,6 +306,7 @@ export default function AdminPanel() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(() => initialForm("products"));
   const [error, setError] = useState("");
+  const [imageUploadBusy, setImageUploadBusy] = useState(false);
   const currentSection = sections[active];
   const rows = sections[active] ? data[active] : [];
   const orderCount = useMemo(() => data.orders.length, [data.orders]);
@@ -312,8 +350,30 @@ export default function AdminPanel() {
     setError("");
   }
 
+  async function uploadProductImage(event) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+
+    setImageUploadBusy(true);
+    setError("");
+    try {
+      const image = await prepareProductImage(file);
+      setForm((current) => ({ ...current, image }));
+    } catch (uploadError) {
+      setError(uploadError.message || "Could not prepare this product image.");
+    } finally {
+      setImageUploadBusy(false);
+    }
+  }
+
   function saveEntry(event) {
     event.preventDefault();
+    if (imageUploadBusy) {
+      setError("Wait for the product image to finish preparing before saving.");
+      return;
+    }
     try {
       if (active === "products" && !data.categories.some((category) => category.id === form.category)) {
         throw new Error("Choose a category ID that exists in the category list.");
@@ -457,10 +517,10 @@ export default function AdminPanel() {
             <section className="admin-card admin-form-card">
               <div className="admin-card-heading"><div><p className="admin-eyebrow">{editing ? "UPDATE RECORD" : "NEW RECORD"}</p><h2>{editing ? "Edit" : "Add"} {active === "products" ? "product" : active === "categories" ? "category" : active.slice(0, -1)}</h2></div></div>
               <form onSubmit={saveEntry}>
-                {currentSection.fields.filter(([name]) => active !== "reviews" || !["product", "store"].includes(name) || (form.type === "store" ? name === "store" : name === "product")).map(([name, label, type]) => <label key={name} className={type === "textarea" ? "admin-field full" : "admin-field"}><span>{label}</span>{type === "textarea" ? <textarea rows="3" value={form[name]} onChange={(event) => setForm((current) => ({ ...current, [name]: event.target.value }))} required={name === "items" || (active === "reviews" && name === "comment")} /> : type === "select" ? <select value={form[name]} onChange={(event) => setForm((current) => ({ ...current, [name]: event.target.value }))}><option value="product">Product review</option><option value="store">Store review</option></select> : type === "select-product" ? <select value={form[name]} onChange={(event) => setForm((current) => ({ ...current, [name]: event.target.value }))} required><option value="">Select a product</option>{data.products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select> : type === "select-category" ? <select value={form[name]} onChange={(event) => setForm((current) => ({ ...current, [name]: event.target.value }))} required><option value="">Select a category</option>{data.categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select> : <input type={type} step={type === "number" ? "1" : undefined} min={active === "reviews" && name === "rating" ? 1 : undefined} max={active === "reviews" && name === "rating" ? 5 : undefined} value={form[name]} onChange={(event) => setForm((current) => ({ ...current, [name]: event.target.value }))} required={active === "reviews" ? ["customer", "rating", "status", "product", "store"].includes(name) : !["rating", "ratingCount"].includes(name)} disabled={name === "id" && Boolean(editing)} />}</label>)}
+                {currentSection.fields.filter(([name]) => active !== "reviews" || !["product", "store"].includes(name) || (form.type === "store" ? name === "store" : name === "product")).map(([name, label, type]) => <label key={name} className={type === "textarea" || (active === "products" && name === "image") ? "admin-field full" : "admin-field"}><span>{label}</span>{active === "products" && name === "image" ? <><input type="text" value={form[name]} onChange={(event) => setForm((current) => ({ ...current, image: event.target.value }))} placeholder="Paste an image URL, or upload a photo below" required /><input type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadProductImage} /><small>JPG, PNG, or WebP · max 10 MB. Uploaded images are compressed and saved in this browser only.</small>{form.image && isPreviewableProductImage(form.image) && <img className="admin-product-image-preview" src={form.image.startsWith("/") || (!/^(data:image\/|https?:\/\/)/i.test(form.image) && !form.image.includes("/")) ? `${import.meta.env.BASE_URL}${form.image.replace(/^\/+/, "")}` : form.image} alt="Product image preview" />}</> : type === "textarea" ? <textarea rows="3" value={form[name]} onChange={(event) => setForm((current) => ({ ...current, [name]: event.target.value }))} required={name === "items" || (active === "reviews" && name === "comment")} /> : type === "select" ? <select value={form[name]} onChange={(event) => setForm((current) => ({ ...current, [name]: event.target.value }))}><option value="product">Product review</option><option value="store">Store review</option></select> : type === "select-product" ? <select value={form[name]} onChange={(event) => setForm((current) => ({ ...current, [name]: event.target.value }))} required><option value="">Select a product</option>{data.products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select> : type === "select-category" ? <select value={form[name]} onChange={(event) => setForm((current) => ({ ...current, [name]: event.target.value }))} required><option value="">Select a category</option>{data.categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select> : <input type={type} step={type === "number" ? "1" : undefined} min={active === "reviews" && name === "rating" ? 1 : undefined} max={active === "reviews" && name === "rating" ? 5 : undefined} value={form[name]} onChange={(event) => setForm((current) => ({ ...current, [name]: event.target.value }))} required={active === "reviews" ? ["customer", "rating", "status", "product", "store"].includes(name) : !["rating", "ratingCount"].includes(name)} disabled={name === "id" && Boolean(editing)} />}</label>)}
                 {active === "reviews" && form.type === "product" && <datalist id="admin-product-options">{data.products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</datalist>}
                 {error && <p className="admin-error" role="alert">{error}</p>}
-                <div className="admin-form-actions"><button className="admin-button primary" type="submit">{editing ? "Save changes" : "Add record"}</button><button className="admin-button" type="button" onClick={startNew}>Clear</button></div>
+                <div className="admin-form-actions"><button className="admin-button primary" type="submit" disabled={imageUploadBusy}>{imageUploadBusy ? "Preparing image…" : editing ? "Save changes" : "Add record"}</button><button className="admin-button" type="button" onClick={startNew}>Clear</button></div>
               </form>
             </section>
           </div>

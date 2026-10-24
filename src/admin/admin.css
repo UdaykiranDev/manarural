@@ -111,6 +111,9 @@ button.admin-store-link { padding: 0; border: 0; background: transparent; cursor
 .admin-field { min-width: 0; display: flex; flex-direction: column; gap: 5px; color: #697365; font-size: 9px; font-weight: 600; }
 .admin-field.full { grid-column: 1 / -1; }
 .admin-field input, .admin-field textarea { width: 100%; min-width: 0; padding: 8px 9px; border: 1px solid #e1e5dd; border-radius: 3px; outline-color: #91aa7a; background: #fff; color: #364739; font: 400 10px/1.5 "DM Sans", sans-serif; }
+.admin-field input[type="file"] { padding: 6px; background: #f8f9f6; }
+.admin-field small { color: #858c81; font-size: 9px; font-weight: 400; line-height: 1.5; }
+.admin-product-image-preview { width: 112px; height: 112px; border: 1px solid #e1e5dd; border-radius: 4px; object-fit: cover; }
 .admin-field textarea { resize: vertical; }
 .admin-field input:disabled { background: #f4f5f2; color: #8b9188; }
 .admin-error { grid-column: 1 / -1; margin: 0; color: #a04236; font-size: 10px; line-height: 1.5; }

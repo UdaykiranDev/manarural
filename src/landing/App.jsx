@@ -51,6 +51,15 @@ function getProductDisplayName(product) {
   return teluguName ? `${product.name} (${teluguName})` : product.name;
 }
 
+function getProductImageSrc(image, width, height) {
+  if (!image) return "";
+  if (/^(data:image\/|https?:\/\/)/i.test(image)) return image;
+  if (image.startsWith("/") || image.includes("/") || /\.(png|jpe?g|webp|gif|svg)$/i.test(image)) {
+    return image.startsWith("/") ? image : `${import.meta.env.BASE_URL}${image}`;
+  }
+  return `https://images.unsplash.com/${image}?auto=format&fit=crop&w=${width}${height ? `&h=${height}` : ""}&q=82`;
+}
+
 const scheduledServiceFields = {
   "Mobile recharge": [
     { name: "mobileNumber", label: "Mobile number", type: "tel", required: true, placeholder: "10-digit mobile number", pattern: "[0-9]{10}" },
@@ -67,6 +76,10 @@ const scheduledServiceFields = {
     { name: "consumerNumber", label: "Consumer / service number", type: "text", required: true },
     { name: "amount", label: "Bill amount (₹)", type: "number", required: true, min: "1", step: "0.01" },
   ],
+  "Gas Cylinder Booking": [
+    { name: "consumerNumber", label: "Gas customer / consumer number", type: "text", required: true },
+    { name: "provider", label: "Gas provider", type: "text", required: true, placeholder: "e.g. Indane, Bharat Gas, HP Gas" },
+  ],
   "PAN & document prints": [
     { name: "documentService", label: "Document / service needed", type: "text", required: true, placeholder: "e.g. PAN application, Aadhaar print" },
     { name: "applicantName", label: "Applicant name", type: "text", required: true, autoComplete: "name" },
@@ -74,6 +87,7 @@ const scheduledServiceFields = {
   ],
   "Travel bookings": [
     { name: "travelMode", label: "Travel type", type: "select", required: true, options: ["Flight", "Train", "Bus"] },
+    { name: "travelClass", label: "Train class", type: "select", required: true, options: ["Sleeper", "AC class"] },
     { name: "origin", label: "From", type: "text", required: true },
     { name: "destination", label: "To", type: "text", required: true },
     { name: "travelDate", label: "Travel date", type: "date", required: true },
@@ -105,6 +119,15 @@ const digitalServicePrices = [
   { service: "Train Ticket Booking (AC Class)", telugu: "రైలు టికెట్ బుకింగ్ (ఏసీ)", detail: "1 ticket / 1 టికెట్", price: "₹50.00" },
   { service: "Mobile & DTH Recharge", telugu: "మొబైల్ & DTH రీఛార్జ్", detail: "1 recharge / 1 రీఛార్జ్", price: "Below ₹199: ₹5; above ₹200: ₹10" },
 ];
+const printServiceOptions = [
+  { id: "xerox-bw", label: "Xerox (Black & White)", unit: "page", rate: 3 },
+  { id: "xerox-double", label: "Xerox (Double Side)", unit: "page", rate: 5 },
+  { id: "computer-print-bw", label: "Computer / WhatsApp Print (B&W)", unit: "page", rate: 10 },
+  { id: "color-print-a4", label: "Color Print (A4)", unit: "page", rate: 10 },
+  { id: "lamination-id", label: "Lamination (Aadhaar / ID Card)", unit: "card", rate: 20 },
+  { id: "lamination-a4", label: "Lamination (A4 Certificate)", unit: "page", rate: 30 },
+];
+const rechargeServiceTitles = new Set(["Mobile recharge", "DTH & cable"]);
 const getServiceScheduleOptions = (serviceTitle) => recurringServiceTitles.has(serviceTitle)
   ? [
       ["once", "As soon as possible"],
@@ -113,6 +136,42 @@ const getServiceScheduleOptions = (serviceTitle) => recurringServiceTitles.has(s
       ["weekly", "Repeat weekly"],
     ]
   : [["once", "As soon as possible"], ["date", "Choose a date"]];
+
+function getServicePriceEstimate(service, details) {
+  const amount = Number(details.amount);
+  const passengerCount = Number(details.passengers);
+  let serviceFee = null;
+  let serviceFeeMax = null;
+  let transactionAmount = Number.isFinite(amount) && amount > 0 ? amount : null;
+  let transactionLabel = "";
+  let externalAmountToConfirm = false;
+
+  if (rechargeServiceTitles.has(service) && transactionAmount !== null) {
+    serviceFee = transactionAmount < 199 ? 5 : transactionAmount > 200 ? 10 : null;
+    transactionLabel = service === "Mobile recharge" ? "Recharge amount" : "DTH recharge amount";
+  } else if (service === "Electricity bills") {
+    serviceFee = 5;
+    serviceFeeMax = 10;
+    transactionLabel = "Electricity bill amount";
+  } else if (service === "Gas Cylinder Booking") {
+    serviceFee = 10;
+    externalAmountToConfirm = true;
+  } else if (service === "Travel bookings" && details.travelMode === "Train" && Number.isInteger(passengerCount) && passengerCount > 0) {
+    const perTicketFee = details.travelClass === "Sleeper" ? 30 : details.travelClass === "AC class" ? 50 : null;
+    if (perTicketFee !== null) {
+      serviceFee = perTicketFee * passengerCount;
+      externalAmountToConfirm = true;
+    }
+  }
+
+  const lowTotal = serviceFee === null
+    ? null
+    : serviceFee + (transactionAmount ?? 0);
+  const highTotal = serviceFeeMax === null
+    ? lowTotal
+    : serviceFeeMax + (transactionAmount ?? 0);
+  return { serviceFee, serviceFeeMax, transactionAmount, transactionLabel, lowTotal, highTotal, externalAmountToConfirm };
+}
 
 function App() {
   const demoSession = getDemoSession();
@@ -136,10 +195,10 @@ function App() {
   const [scheduleContact, setScheduleContact] = useState("");
   const [scheduledDetails, setScheduledDetails] = useState({});
   const [printQuantity, setPrintQuantity] = useState(1);
+  const [printPages, setPrintPages] = useState(1);
+  const [printServiceType, setPrintServiceType] = useState("xerox-bw");
   const [printOptions, setPrintOptions] = useState({
-    color: "Black & white",
     paperSize: "A4",
-    sides: "Single-sided",
     pageRange: "",
   });
   const [printFiles, setPrintFiles] = useState([]);
@@ -148,6 +207,7 @@ function App() {
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [notice, setNotice] = useState("");
+  const servicePriceEstimate = getServicePriceEstimate(scheduledService, scheduledDetails);
 
   const inventoryItems = useMemo(() => categories.flatMap((category) => {
     const image = products.find((product) => product.category === category.id)?.image;
@@ -213,13 +273,21 @@ function App() {
       quantity: job.quantity,
       files: job.files,
       printOptions: job.options,
+      serviceName: job.serviceName,
+      pagesPerCopy: job.pagesPerCopy,
+      unitPrice: job.unitRate * job.pagesPerCopy,
+      unitLabel: `${job.pagesPerCopy} ${job.unit}`,
+      serviceSubtotal: job.unitRate * job.pagesPerCopy * job.quantity,
     })),
   ];
   const cartCount = Object.values(cart).reduce((total, quantity) => total + quantity, 0)
     + printCart.reduce((total, job) => total + job.quantity, 0);
   const cartTotal = cartItems.reduce((total, item) => total + (item.variant?.price ?? item.unitPrice ?? 0) * item.quantity, 0);
-  const deliveryCharge = cartTotal <= 300 ? 30 : 0;
-  const orderTotal = cartTotal + deliveryCharge;
+  const printSubtotal = printCart.reduce((total, job) => total + job.unitRate * job.pagesPerCopy * job.quantity, 0);
+  const groceryDeliveryCharge = cartItems.length ? (cartTotal <= 300 ? 30 : 0) : 0;
+  const printDeliveryCharge = printCart.length ? (printSubtotal <= 300 ? 30 : 0) : 0;
+  const deliveryCharge = groceryDeliveryCharge + printDeliveryCharge;
+  const orderTotal = cartTotal + printSubtotal + deliveryCharge;
   const hasUnpricedItems = basketItems.some((item) => !Number.isFinite(item.variant?.price ?? item.unitPrice));
   const isLocalDelivery = deliveryPincode.trim() === "531036";
   const canProceedToCheckout = basketItems.length > 0 && !hasUnpricedItems && isLocalDelivery;
@@ -227,13 +295,14 @@ function App() {
     const unitPrice = item.variant?.price ?? item.unitPrice;
     const unitLabel = item.variant?.label ?? item.unitLabel;
     const priceDetails = Number.isFinite(unitPrice)
-      ? `${formatPrice(unitPrice)} each${unitLabel ? ` (${unitLabel})` : ""} — ${formatPrice(unitPrice * item.quantity)}`
+      ? `${formatPrice(unitPrice)} each${unitLabel ? ` (${unitLabel})` : ""} — ${formatPrice(item.serviceSubtotal ?? unitPrice * item.quantity)}`
       : "Price to confirm";
     const brandDetails = item.brand ? ` · ${item.brand.name}` : "";
-    return `${getProductDisplayName(item)}${brandDetails} x ${item.quantity} — ${priceDetails}`;
+    const serviceDetails = item.serviceName ? ` · ${item.serviceName}` : "";
+    return `${getProductDisplayName(item)}${brandDetails}${serviceDetails} x ${item.quantity} — ${priceDetails}`;
   });
 
-  function sendWhatsAppOrder(event) {
+  async function sendWhatsAppOrder(event) {
     event.preventDefault();
     if (!customerName.trim() || !customerPhone.trim() || !deliveryAddress.trim()) {
       setNotice("Please enter your name, mobile number, and delivery address.");
@@ -257,12 +326,32 @@ function App() {
       "Selected items:",
       ...checkoutOrderLines.map((line) => `• ${line}`),
       "",
-      `Grocery subtotal: ${formatPrice(cartTotal)}`,
-      `Delivery charges: ${deliveryCharge ? formatPrice(deliveryCharge) : "Free"}`,
+      ...(cartItems.length ? [`Grocery subtotal: ${formatPrice(cartTotal)}`] : []),
+      ...(printCart.length ? [`Xerox & printing subtotal: ${formatPrice(printSubtotal)}`] : []),
+      `Grocery delivery charge: ${groceryDeliveryCharge ? formatPrice(groceryDeliveryCharge) : "None"}`,
+      `Xerox & printing delivery charge: ${printDeliveryCharge ? formatPrice(printDeliveryCharge) : "None"}`,
       `Order total: ${formatPrice(orderTotal)}`,
     ].join("\n");
 
-    window.open(whatsappLink(message), "_blank", "noopener,noreferrer");
+    const printDocuments = printCart.flatMap((job) => job.documents);
+    if (printDocuments.length && navigator.share && navigator.canShare?.({ files: printDocuments })) {
+      try {
+        await navigator.share({ title: "ManaRural order request", text: message, files: printDocuments });
+        setNotice("Share sheet closed. Check WhatsApp and send the request with your selected documents.");
+        window.setTimeout(() => setNotice(""), 5000);
+        return;
+      } catch (shareError) {
+        if (shareError.name === "AbortError") return;
+      }
+    }
+    const attachmentNote = printDocuments.length
+      ? "\nPlease attach the selected print documents in this WhatsApp chat."
+      : "";
+    window.open(whatsappLink(`${message}${attachmentNote}`), "_blank", "noopener,noreferrer");
+    if (printDocuments.length) {
+      setNotice("WhatsApp opened with your order details. Attach the selected print documents in the chat.");
+      window.setTimeout(() => setNotice(""), 5000);
+    }
   }
 
   function changeQuantity(id, amount) {
@@ -294,11 +383,17 @@ function App() {
       setPrintStatus("Choose at least one document before adding this print request.");
       return;
     }
+    const selectedPrintService = printServiceOptions.find((service) => service.id === printServiceType);
     setPrintCart((current) => [...current, {
       id: `print-job-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       quantity: printQuantity,
       files: printFiles.map((file) => file.name),
+      documents: [...printFiles],
       options: { ...printOptions },
+      serviceName: selectedPrintService.label,
+      unit: selectedPrintService.unit,
+      unitRate: selectedPrintService.rate,
+      pagesPerCopy: printPages,
     }]);
     setCartOpen(true);
   }
@@ -308,14 +403,23 @@ function App() {
       setPrintStatus("Choose at least one document before requesting printing.");
       return;
     }
+    const selectedPrintService = printServiceOptions.find((service) => service.id === printServiceType);
     const files = printFiles.map((file) => file.name);
+    const serviceSubtotal = selectedPrintService.rate * printPages * printQuantity;
+    const deliveryFee = serviceSubtotal <= 300 ? 30 : 0;
     const message = [
-      "Namaste ManaRural! I would like to request Xerox & printing.",
+      "Namaste ManaRural! I would like to request Xerox / printing.",
+      `Print service: ${selectedPrintService.label}`,
       `Copies: ${printQuantity}`,
+      `${selectedPrintService.unit === "card" ? "Cards" : "Pages"} per copy: ${printPages}`,
+      `Service charge: ${formatPrice(selectedPrintService.rate)} per ${selectedPrintService.unit}`,
       `Print options: ${formatPrintOptions(printOptions)}`,
       `Page range: ${printOptions.pageRange.trim() || "All pages"}`,
       `Documents: ${files.join(", ")}`,
-      "Please confirm price and availability before processing.",
+      `Printing service subtotal: ${formatPrice(serviceSubtotal)}`,
+      `Print delivery charge: ${deliveryFee ? formatPrice(deliveryFee) : "Free (service subtotal above ₹300)"}`,
+      `Estimated total: ${formatPrice(serviceSubtotal + deliveryFee)}`,
+      "Please confirm the final amount and delivery availability before processing. This is a request, not a confirmed order.",
     ].join("\n");
 
     try {
@@ -326,7 +430,7 @@ function App() {
           text: message,
           files: printFiles,
         });
-        setPrintStatus("Share sheet closed. Check WhatsApp for the selected documents and request, then send the message.");
+        setPrintStatus(`Share sheet closed. Estimated service charge ${formatPrice(serviceSubtotal)} + delivery ${deliveryFee ? formatPrice(deliveryFee) : "Free"} = ${formatPrice(serviceSubtotal + deliveryFee)}. Check WhatsApp and send the selected documents and request.`);
         return;
       }
     } catch (shareError) {
@@ -334,12 +438,12 @@ function App() {
         setPrintStatus("Sharing was cancelled. Your selected documents are still available here; try again when ready.");
         return;
       }
-      setPrintStatus("Your browser could not share files directly. WhatsApp will open with the request; attach the documents there.");
+      setPrintStatus(`Your browser could not share files directly. Estimated total is ${formatPrice(serviceSubtotal + deliveryFee)} including delivery. WhatsApp will open with the request; attach the documents there.`);
       window.open(whatsappLink(`${message}\n\nPlease attach the selected documents in this chat.`), "_blank", "noopener,noreferrer");
       return;
     }
 
-    setPrintStatus("Your browser cannot attach files directly to WhatsApp. WhatsApp will open with your request; attach the documents there.");
+    setPrintStatus(`Estimated service charge ${formatPrice(serviceSubtotal)} + delivery ${deliveryFee ? formatPrice(deliveryFee) : "Free"} = ${formatPrice(serviceSubtotal + deliveryFee)}. WhatsApp will open with the request; attach the documents there.`);
     window.open(whatsappLink(`${message}\n\nPlease attach the selected documents in this chat.`), "_blank", "noopener,noreferrer");
   }
 
@@ -373,12 +477,7 @@ function App() {
   }
 
   function formatPrintOptions(options) {
-    return [
-      options.color,
-      options.paperSize,
-      options.sides,
-      `Pages: ${options.pageRange.trim() || "All"}`,
-    ].join(" · ");
+    return [options.paperSize, `Page range: ${options.pageRange.trim() || "All"}`].join(" · ");
   }
 
   function requestService(service) {
@@ -408,12 +507,25 @@ function App() {
       : serviceSchedule === "date"
         ? `Schedule: One-time request for ${scheduledDate}`
         : `Schedule: Repeat ${serviceSchedule}, starting ${scheduledDate}`;
+    const estimateLines = [
+      servicePriceEstimate.serviceFee === null
+        ? "ManaRural service fee: To be confirmed"
+        : `ManaRural service fee: ${formatPrice(servicePriceEstimate.serviceFee)}${servicePriceEstimate.serviceFeeMax !== null ? `–${formatPrice(servicePriceEstimate.serviceFeeMax)}` : ""}`,
+      servicePriceEstimate.transactionAmount !== null
+        ? `${servicePriceEstimate.transactionLabel}: ${formatPrice(servicePriceEstimate.transactionAmount)} (separate from the service fee)`
+        : null,
+      servicePriceEstimate.lowTotal !== null
+        ? `Known amount${servicePriceEstimate.externalAmountToConfirm ? " (service fee only; ticket/cylinder amount is separate)" : ""}: ${formatPrice(servicePriceEstimate.lowTotal)}${servicePriceEstimate.highTotal !== servicePriceEstimate.lowTotal ? `–${formatPrice(servicePriceEstimate.highTotal)}` : ""}`
+        : "Final amount: Service fee and any recharge, bill, or ticket amount will be confirmed by the team",
+      "Digital service delivery charge: None",
+    ].filter(Boolean);
     const message = [
       `Namaste ManaRural! I would like to request ${scheduledService}.`,
       details,
+      ...estimateLines,
       scheduleContact.trim() && `Customer contact: ${scheduleContact.trim()}`,
       scheduleDetails,
-      "Please confirm availability, amount and schedule before processing. This is a request, not an automatic payment authorization. Do not send passwords or OTPs.",
+      "Please confirm availability, final amount and schedule before processing. The listed service fee is separate from any recharge, bill, or ticket cost. This is a request, not an automatic payment authorization. Do not send passwords or OTPs.",
     ].filter(Boolean).join("\n");
     window.open(whatsappLink(message), "_blank", "noopener,noreferrer");
     setNotice("Your request is ready in WhatsApp. Please send it to confirm.");
@@ -447,7 +559,7 @@ function App() {
           <a href={`${import.meta.env.BASE_URL}policies`}>Policies</a>
         </nav>
         <div className="header-actions">
-          <a className="header-contact" href={`tel:+${whatsappNumber}`}>+91 85002 74274</a>
+          {/* <a className="header-contact" href={`tel:+${whatsappNumber}`}>+91 89343 57875</a> */}
           <nav className="header-account-links" aria-label="Account navigation">
             {demoSession ? (
               <>
@@ -537,7 +649,7 @@ function App() {
                     const quantity = cart[cartKey] || 0;
                     return (
                       <article className={`product-card ${product.color}`} key={product.id}>
-                        <div className="product-image-wrap"><img src={`https://images.unsplash.com/${product.image}?auto=format&fit=crop&w=720&q=82`} alt={getProductDisplayName(product)} loading={index > 3 ? "lazy" : "eager"} /><span className="local-pick">LOCAL PICK</span></div>
+                        <div className="product-image-wrap"><img src={getProductImageSrc(product.image, 720)} alt={getProductDisplayName(product)} loading={index > 3 ? "lazy" : "eager"} /><span className="local-pick">LOCAL PICK</span></div>
                         <div className="product-info">
                           <p>{product.detail}</p>
                           <h4>{getProductDisplayName(product)}</h4>
@@ -558,7 +670,7 @@ function App() {
               )}
               {!search && <p className="sample-disclaimer">Shelf prices, pack sizes and customer ratings are sample estimates. Confirm current prices and stock with our local team.</p>}
               <div className="catalog-cart-summary" aria-live="polite">
-                <div><span className="eyebrow">YOUR BASKET</span><strong>{cartCount} {cartCount === 1 ? "item" : "items"}</strong><small>Estimated total: {formatPrice(cartTotal)}{hasUnpricedItems ? " + items to confirm" : ""}</small></div>
+                <div><span className="eyebrow">YOUR BASKET</span><strong>{cartCount} {cartCount === 1 ? "item" : "items"}</strong><small>Estimated total: {formatPrice(orderTotal)}{hasUnpricedItems ? " + items to confirm" : ""}</small></div>
                 <button className="button button-primary" onClick={() => setCartOpen(true)}>View basket <Icon name="bag" size={17} /></button>
               </div>
               {!search && <div className="aisle-list"><div className="aisle-heading"><div><p className="eyebrow">MORE FROM OUR SHELVES</p><h3>Find your everyday essentials.</h3></div><span>Ask us for today’s availability</span></div>{visibleCategories.map((category) => {
@@ -577,12 +689,30 @@ function App() {
                   <div className="print-quantity"><span>Copies</span><div className="print-quantity-control"><button onClick={() => setPrintQuantity((count) => Math.max(1, count - 1))} aria-label="Reduce number of copies" disabled={printQuantity <= 1}>−</button><strong aria-live="polite">{printQuantity}</strong><button onClick={() => setPrintQuantity((count) => count + 1)} aria-label="Increase number of copies">+</button></div></div>
                   <fieldset className="print-options">
                     <legend>Print options</legend>
-                    <label><span>Print in</span><select value={printOptions.color} onChange={(event) => setPrintOptions((current) => ({ ...current, color: event.target.value }))}><option>Black &amp; white</option><option>Color</option></select></label>
-                    <label><span>Paper size</span><select value={printOptions.paperSize} onChange={(event) => setPrintOptions((current) => ({ ...current, paperSize: event.target.value }))}><option>A4</option><option>A3</option><option>Letter</option></select></label>
-                    <label><span>Print sides</span><select value={printOptions.sides} onChange={(event) => setPrintOptions((current) => ({ ...current, sides: event.target.value }))}><option>Single-sided</option><option>Double-sided</option></select></label>
+                    <label><span>Service</span><select value={printServiceType} onChange={(event) => {
+                      const serviceType = event.target.value;
+                      setPrintServiceType(serviceType);
+                      if (serviceType === "color-print-a4" || serviceType === "lamination-a4") {
+                        setPrintOptions((current) => ({ ...current, paperSize: "A4" }));
+                      }
+                    }}>{printServiceOptions.map((service) => <option key={service.id} value={service.id}>{service.label} — {formatPrice(service.rate)} / {service.unit}</option>)}</select></label>
+                    <label><span>Paper size</span><select value={printOptions.paperSize} disabled={printServiceType === "color-print-a4" || printServiceType === "lamination-a4"} onChange={(event) => setPrintOptions((current) => ({ ...current, paperSize: event.target.value }))}><option>A4</option><option>A3</option><option>Letter</option></select></label>
                     <label><span>Page range <small>(optional)</small></span><input value={printOptions.pageRange} onChange={(event) => setPrintOptions((current) => ({ ...current, pageRange: event.target.value }))} placeholder="e.g. 1-3, 5" pattern="[0-9,\\-\\s]*" title="Enter page numbers and ranges, such as 1-3, 5" /></label>
                   </fieldset>
-                  <p className="print-options-note">These settings apply to every selected file. Leave page range blank to print all pages.</p>
+                  <label className="print-page-count"><span>{printServiceOptions.find((service) => service.id === printServiceType)?.unit === "card" ? "Cards per copy" : "Pages per copy"}</span><input type="number" min="1" step="1" value={printPages} onChange={(event) => setPrintPages(Math.max(1, Number(event.target.value) || 1))} /></label>
+                  <p className="print-options-note">Enter the total pages or cards for one copy. Leave page range blank to print all pages.</p>
+                  {(() => {
+                    const selectedService = printServiceOptions.find((service) => service.id === printServiceType);
+                    const serviceSubtotal = selectedService.rate * printPages * printQuantity;
+                    const deliveryFee = serviceSubtotal <= 300 ? 30 : 0;
+                    return <section className="service-checkout-summary" aria-label="Xerox and printing price estimate">
+                      <h4>Request estimate / అభ్యర్థన అంచనా</h4>
+                      <div><span>{selectedService.label} · {printPages * printQuantity} {selectedService.unit}{printPages * printQuantity === 1 ? "" : "s"} × {formatPrice(selectedService.rate)}</span><strong>{formatPrice(serviceSubtotal)}</strong></div>
+                      <div><span>Print delivery charge / డెలివరీ ఛార్జీ</span><strong>{deliveryFee ? formatPrice(deliveryFee) : "Free"}</strong></div>
+                      <div className="service-checkout-total"><span>Estimated total / అంచనా మొత్తం</span><strong>{formatPrice(serviceSubtotal + deliveryFee)}</strong></div>
+                      <small>Delivery charge: ₹30 when printing subtotal is ₹300 or less; free above ₹300. Final page count and amount will be confirmed by our team.</small>
+                    </section>;
+                  })()}
                   <aside className="print-customer-note" role="note">
                     <b>Customer note / వినియోగదారులకు గమనిక</b>
                     <span>Your files are selected only in this browser; they are not uploaded or sent yet. After choosing “Request printing on WhatsApp”, select WhatsApp in the share sheet if available. Otherwise, attach the files manually in the WhatsApp chat.</span>
@@ -609,13 +739,24 @@ function App() {
                   <div className="print-order-heading"><p className="eyebrow">SERVICE REQUEST</p><h3>{scheduledService}</h3><p>Enter your account details and preferred schedule. Our team will confirm the request with you on WhatsApp.</p></div>
                   <form onSubmit={sendScheduledServiceRequest}>
                     <div className="scheduled-fields">
-                      {scheduledServiceFields[scheduledService].map(({ name, label, options, ...inputProps }) => <label className="scheduled-field" key={name}><span>{label}</span>{inputProps.type === "select" ? <select {...inputProps} value={scheduledDetails[name] || ""} onChange={(event) => setScheduledDetails((current) => ({ ...current, [name]: event.target.value }))}><option value="">Select an option</option>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select> : <input {...inputProps} value={scheduledDetails[name] || ""} onChange={(event) => setScheduledDetails((current) => ({ ...current, [name]: event.target.value }))} />}</label>)}
+                      {scheduledServiceFields[scheduledService].map(({ name, label, options, ...inputProps }) => {
+                        if (name === "travelClass" && scheduledDetails.travelMode !== "Train") return null;
+                        return <label className="scheduled-field" key={name}><span>{label}</span>{inputProps.type === "select" ? <select {...inputProps} value={scheduledDetails[name] || ""} onChange={(event) => setScheduledDetails((current) => ({ ...current, [name]: event.target.value }))}><option value="">Select an option</option>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select> : <input {...inputProps} value={scheduledDetails[name] || ""} onChange={(event) => setScheduledDetails((current) => ({ ...current, [name]: event.target.value }))} />}</label>;
+                      })}
                       <label className="scheduled-field"><span>Your contact number (optional)</span><input type="tel" autoComplete="tel" value={scheduleContact} onChange={(event) => setScheduleContact(event.target.value)} placeholder="Number we can reach you on" /></label>
                     </div>
                     <fieldset className="schedule-options"><legend>{recurringServiceTitles.has(scheduledService) ? "When should we arrange this?" : "When do you need this?"}</legend>
                       {getServiceScheduleOptions(scheduledService).map(([value, label]) => <label key={value}><input type="radio" name="service-schedule" checked={serviceSchedule === value} onChange={() => setServiceSchedule(value)} /> {label}</label>)}
                     </fieldset>
                     {serviceSchedule !== "once" && <label className="scheduled-field scheduled-date-field"><span>{serviceSchedule === "date" ? "Requested date" : "Start date"}</span><input type="date" value={scheduledDate} min={new Date().toISOString().slice(0, 10)} onChange={(event) => setScheduledDate(event.target.value)} required /></label>}
+                    <section className="service-checkout-summary" aria-label="Digital service price estimate">
+                      <h4>Request estimate / అభ్యర్థన అంచనా</h4>
+                      <div><span>ManaRural service fee / సేవా రుసుము</span><strong>{servicePriceEstimate.serviceFee === null ? "To be confirmed" : `${formatPrice(servicePriceEstimate.serviceFee)}${servicePriceEstimate.serviceFeeMax !== null ? `–${formatPrice(servicePriceEstimate.serviceFeeMax)}` : ""}`}</strong></div>
+                      {servicePriceEstimate.transactionAmount !== null && <div><span>{servicePriceEstimate.transactionLabel} / అసలు చెల్లింపు మొత్తం</span><strong>{formatPrice(servicePriceEstimate.transactionAmount)}</strong></div>}
+                      {servicePriceEstimate.lowTotal !== null && <div className="service-checkout-total"><span>{servicePriceEstimate.externalAmountToConfirm ? "Service fee only / సేవా రుసుము మాత్రమే" : "Estimated amount / అంచనా మొత్తం"}</span><strong>{formatPrice(servicePriceEstimate.lowTotal)}{servicePriceEstimate.highTotal !== servicePriceEstimate.lowTotal ? `–${formatPrice(servicePriceEstimate.highTotal)}` : ""}</strong></div>}
+                      <div><span>Digital service delivery charge / డెలివరీ ఛార్జీ</span><strong>None</strong></div>
+                      <small>The listed fee is ManaRural’s service fee. Recharge and bill amounts, ticket fares, and the gas cylinder amount are separate. Our team will confirm the final amount before processing. / చూపినది సేవా రుసుము మాత్రమే; రీఛార్జ్, బిల్లు, టికెట్ లేదా గ్యాస్ సిలిండర్ మొత్తం వేరు.</small>
+                    </section>
                     <p className="schedule-disclaimer">{recurringServiceTitles.has(scheduledService) ? "Scheduling is a request only. No recharge or bill payment will happen automatically; the team must confirm every request." : "This is a request only. Our team will confirm availability and next steps on WhatsApp. Never share account passwords or one-time passcodes."}</p>
                     <button className="scheduled-submit" type="submit"><Icon name="whatsapp" size={18} /> Send details on WhatsApp</button>
                   </form>
@@ -655,7 +796,7 @@ function App() {
       </main>
 
       <footer className="site-footer">
-        <div className="footer-main"><div className="footer-brand"><span className="brand-name">Mana<span>Rural</span></span><p>Everything you need, one place.<br />Your local basket of products.</p></div><div className="footer-contact"><span className="eyebrow">HERE FOR OUR COMMUNITY</span><a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noreferrer"><Icon name="whatsapp" size={18} /> +91 85002 74274</a><a href="mailto:manaruralservices@gmail.com">✉ &nbsp;manaruralservices@gmail.com</a></div><div className="footer-account-links"><a href={`${import.meta.env.BASE_URL}policies`}>Policies</a></div><a className="back-top" href="#home">Back to top ↑</a></div>
+        <div className="footer-main"><div className="footer-brand"><span className="brand-name">Mana<span>Rural</span></span><p>Everything you need, one place.<br />Your local basket of products.</p></div><div className="footer-contact"><span className="eyebrow">HERE FOR OUR COMMUNITY</span><a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noreferrer"><Icon name="whatsapp" size={18} /> +91 89343 57875</a><a href="mailto:manaruralservices@gmail.com">✉ &nbsp;manaruralservices@gmail.com</a></div><div className="footer-account-links"><a href={`${import.meta.env.BASE_URL}policies`}>Policies</a></div><a className="back-top" href="#home">Back to top ↑</a></div>
         <div className="footer-bottom"><span>© {new Date().getFullYear()} ManaRural · RuralReachServices</span><span>మన ఊరు • మన అవసరాలు • ఒకే చోట</span></div>
       </footer>
 
@@ -679,10 +820,13 @@ function App() {
                   <section className="checkout-order-summary" aria-label="Order summary">
                     <h3>Order summary</h3>
                     <ul>{checkoutOrderLines.map((line, index) => <li key={`${basketItems[index].cartKey}-summary`}>{line}</li>)}</ul>
-                    <div className="checkout-total"><span>Grocery subtotal</span><strong>{formatPrice(cartTotal)}</strong></div>
-                    <div className="checkout-total"><span>Delivery charges</span><strong>{deliveryCharge ? formatPrice(deliveryCharge) : "Free"}</strong></div>
+                    {cartItems.length > 0 && <div className="checkout-total"><span>Grocery subtotal</span><strong>{formatPrice(cartTotal)}</strong></div>}
+                    {printCart.length > 0 && <div className="checkout-total"><span>Xerox &amp; printing subtotal</span><strong>{formatPrice(printSubtotal)}</strong></div>}
+                    {groceryDeliveryCharge > 0 && <div className="checkout-total"><span>Grocery delivery charge</span><strong>{formatPrice(groceryDeliveryCharge)}</strong></div>}
+                    {printDeliveryCharge > 0 && <div className="checkout-total"><span>Xerox &amp; printing delivery charge</span><strong>{formatPrice(printDeliveryCharge)}</strong></div>}
+                    {deliveryCharge === 0 && <div className="checkout-total"><span>Delivery charges</span><strong>Free</strong></div>}
                     <div className="checkout-total checkout-grand-total"><span>Order total</span><strong>{formatPrice(orderTotal)}</strong></div>
-                    <p>Orders of ₹300 or less have a ₹30 delivery charge. Delivery is free above ₹300.</p>
+                    <p>Grocery delivery: ₹30 for grocery subtotals of ₹300 or less; free above ₹300. Xerox/printing delivery: ₹30 for print-service subtotals of ₹300 or less; free above ₹300. Other digital services have no delivery charge.</p>
                   </section>
                   <section className="checkout-payment-notice">
                     <h3>Send your order on WhatsApp</h3>
@@ -692,13 +836,17 @@ function App() {
                       <span>{customerName.trim() || "Customer"} · +91 {customerPhone || "mobile"} · PIN {deliveryPincode || "—"}</span>
                       {deliveryAddress.trim() && <span>Deliver to: {deliveryAddress.trim()}</span>}
                       {checkoutOrderLines.map((line, index) => <span key={`whatsapp-${basketItems[index].cartKey}`}>{line}</span>)}
-                      <span>Delivery charges: {deliveryCharge ? formatPrice(deliveryCharge) : "Free"}</span>
+                      {cartItems.length > 0 && <span>Grocery subtotal: {formatPrice(cartTotal)}</span>}
+                      {printCart.length > 0 && <span>Xerox &amp; printing subtotal: {formatPrice(printSubtotal)}</span>}
+                      <span>Grocery delivery charge: {groceryDeliveryCharge ? formatPrice(groceryDeliveryCharge) : "None"}</span>
+                      <span>Xerox &amp; printing delivery charge: {printDeliveryCharge ? formatPrice(printDeliveryCharge) : "None"}</span>
                       <strong>Order total: {formatPrice(orderTotal)}</strong>
                     </div>
                     <button className="button button-primary checkout-whatsapp-button" type="submit" form="checkout-customer-form">
                       <Icon name="whatsapp" size={18} /> Send order on WhatsApp
                     </button>
-                    <small>WhatsApp will open with your order details ready to send. Our team will call to confirm and deliver to your door. Pay cash on delivery only—do not pay through this app.</small>
+                    {cartItems.length > 0 && <small>Our team will call to confirm grocery orders and deliver to your door. Pay cash on delivery only—do not pay through this app.</small>}
+                    {printCart.length > 0 && <small>Print delivery is charged only for Xerox/printing as shown above. Our team will confirm the final print amount and delivery details.</small>}
                   </section>
                 </div>
               </>
@@ -713,10 +861,10 @@ function App() {
                     <div className="cart-items">
                       {basketItems.map((item) => (
                         <div className="cart-item" key={item.cartKey}>
-                          {item.image ? <img src={`https://images.unsplash.com/${item.image}?auto=format&fit=crop&w=160&h=160&q=75`} alt="" /> : <span className="cart-service-icon">🖨️</span>}
+                          {item.image ? <img src={getProductImageSrc(item.image, 160, 160)} alt="" /> : <span className="cart-service-icon">🖨️</span>}
                           <div className="cart-item-copy">
                             <b>{getProductDisplayName(item)}</b>
-                            <small>{item.printOptions ? `${formatPrintOptions(item.printOptions)} · ${item.files.join(", ")}` : item.variant ? `${item.brand ? `${item.brand.name} · ` : ""}${item.variant.label} · ${formatPrice(item.variant.price)} each` : Number.isFinite(item.unitPrice) ? `${item.unitLabel} · ${formatPrice(item.unitPrice)} each` : item.files?.length ? `Files: ${item.files.join(", ")}` : "Price not set"}</small>
+                            <small>{item.printOptions ? `${item.serviceName} · ${item.unitLabel} per copy · ${formatPrintOptions(item.printOptions)} · ${item.files.join(", ")}` : item.variant ? `${item.brand ? `${item.brand.name} · ` : ""}${item.variant.label} · ${formatPrice(item.variant.price)} each` : Number.isFinite(item.unitPrice) ? `${item.unitLabel} · ${formatPrice(item.unitPrice)} each` : item.files?.length ? `Files: ${item.files.join(", ")}` : "Price not set"}</small>
                             <div className="quantity-control"><button onClick={() => changeQuantity(item.cartKey, -1)} aria-label={`Remove one ${item.name}`}><Icon name="minus" size={14} /></button><span>{item.quantity}</span><button onClick={() => changeQuantity(item.cartKey, 1)} aria-label={`Add one ${item.name}`}><Icon name="plus" size={14} /></button></div>
                           </div>
                           <strong className="cart-line-total">{item.variant ? formatPrice(item.variant.price * item.quantity) : Number.isFinite(item.unitPrice) ? formatPrice(item.unitPrice * item.quantity) : "On request"}</strong>
@@ -725,8 +873,11 @@ function App() {
                       ))}
                     </div>
                     <div className="drawer-footer">
-                      <div className="cart-estimate"><span>Grocery subtotal</span><strong>{formatPrice(cartTotal)}</strong></div>
-                      <p>Local delivery is currently available only for PIN code 531036. Orders of ₹300 or less have a ₹30 delivery charge; delivery is free above ₹300.</p>
+                      {cartItems.length > 0 && <div className="cart-estimate"><span>Grocery subtotal</span><strong>{formatPrice(cartTotal)}</strong></div>}
+                      {printCart.length > 0 && <div className="cart-estimate"><span>Xerox &amp; printing subtotal</span><strong>{formatPrice(printSubtotal)}</strong></div>}
+                      <div className="cart-estimate"><span>Delivery charges</span><strong>{deliveryCharge ? formatPrice(deliveryCharge) : "None"}</strong></div>
+                      <div className="cart-estimate"><span>Estimated total</span><strong>{formatPrice(orderTotal)}</strong></div>
+                      <p>Local delivery is available only for PIN code 531036. Grocery and Xerox/printing delivery fees are calculated separately; other digital-service requests have no delivery fee.</p>
                       <label className="delivery-pincode-field">Delivery PIN code
                         <input inputMode="numeric" pattern="[0-9]{6}" maxLength="6" placeholder="Enter 531036" value={deliveryPincode} onChange={(event) => setDeliveryPincode(event.target.value.replace(/\D/g, "").slice(0, 6))} />
                       </label>
